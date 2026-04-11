@@ -52,10 +52,7 @@ export default function PlaceSearch({
       input: value,
       sessionToken: sessionToken.current,
       includedRegionCodes: ['gb'],
-      locationBias: new window.google.maps.Circle({
-        center: LONDON_CENTER,
-        radius: 30000,
-      }),
+      locationBias: { center: LONDON_CENTER, radius: 30000 },
     }).then(({ suggestions: results }) => {
       if (cancelled) return
       setSuggestions(results ?? [])
