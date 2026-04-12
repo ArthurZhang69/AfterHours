@@ -39,10 +39,9 @@ const LONDON_GRID = [
   { lat: 51.477, lng: -0.024 }, // Deptford / Greenwich (gap between Canary Wharf & Lewisham)
 ]
 
-const BATCH_SIZE    = 2     // 2 concurrent — police API allows ~15 req/s; retry handles 429
-const BATCH_DELAY   = 1000  // ms between batches (8 batches × 1 s ≈ 8 s total vs 19 s before)
+const CONCURRENCY = 6   // concurrent requests — police API allows ~15 req/s; retry handles 429
 
-const CACHE_KEY = 'afterhours_london_crimes_v1'
+const CACHE_KEY = 'afterhours_london_crimes_v2'
 const CACHE_TTL = 24 * 60 * 60 * 1000   // 24 h — crime data is monthly
 
 function loadCache() {
@@ -61,12 +60,40 @@ function saveCache(crimes, dataMonth) {
   } catch { /* storage full — silently ignore */ }
 }
 
-async function fetchBatch(points, date, signal) {
-  return Promise.all(
-    points.map((p) =>
-      fetchNearbyCrimes(p.lat, p.lng, date, signal).catch(() => [])
-    )
-  )
+/**
+ * Runs `tasks` with at most `limit` concurrent promises.
+ * Calls `onDone(result)` as each task completes — no waiting for a full batch.
+ */
+async function withConcurrency(tasks, limit, onDone, signal) {
+  const queue = [...tasks]
+  let active = 0
+  let done = 0
+
+  return new Promise((resolve, reject) => {
+    function next() {
+      if (signal?.aborted) { resolve(); return }
+      while (active < limit && queue.length > 0) {
+        const task = queue.shift()
+        active++
+        task().then((result) => {
+          active--
+          done++
+          if (!signal?.aborted) onDone(result, done)
+          next()
+          if (active === 0 && queue.length === 0) resolve()
+        }).catch(() => {
+          active--
+          done++
+          if (!signal?.aborted) onDone([], done)
+          next()
+          if (active === 0 && queue.length === 0) resolve()
+        })
+      }
+    }
+    next()
+    // Edge case: empty task list
+    if (queue.length === 0 && active === 0) resolve()
+  })
 }
 
 /**
@@ -107,55 +134,42 @@ export function useLondonCrimes(date) {
     setClusters([])
 
     ;(async () => {
-      const seen    = new Set()
-      const all     = []
-      const batches = []
+      const seen         = new Set()
+      const all          = []
+      let resolvedMonth  = null
+      const total        = LONDON_GRID.length
 
-      for (let i = 0; i < LONDON_GRID.length; i += BATCH_SIZE) {
-        batches.push(LONDON_GRID.slice(i, i + BATCH_SIZE))
-      }
+      const tasks = LONDON_GRID.map((p) => () =>
+        fetchNearbyCrimes(p.lat, p.lng, date, controller.signal).catch(() => [])
+      )
 
-      let resolvedMonth = null
-
-      for (let b = 0; b < batches.length; b++) {
-        if (controller.signal.aborted) break
-
-        const results = await fetchBatch(batches[b], date, controller.signal)
-
-        for (const batch of results) {
-          for (const crime of batch) {
-            const key = crime.id ?? `${crime.location?.latitude},${crime.location?.longitude},${crime.category}`
-            if (!seen.has(key)) {
-              seen.add(key)
-              all.push(crime)
-            }
+      await withConcurrency(tasks, CONCURRENCY, (crimes, doneCount) => {
+        // Merge deduplicated crimes
+        for (const crime of crimes) {
+          const key = crime.id ?? `${crime.location?.latitude},${crime.location?.longitude},${crime.category}`
+          if (!seen.has(key)) {
+            seen.add(key)
+            all.push(crime)
           }
         }
 
-        // Progressive update — show crimes as they arrive
-        if (!controller.signal.aborted) {
-          const snapshot = [...all]
-          setCrimes(snapshot)
-          setClusters(clusterCrimes(snapshot))
-          setProgress(Math.round(((b + 1) / batches.length) * 100))
+        // Progressive update — update map after every completed request
+        const snapshot = [...all]
+        setCrimes(snapshot)
+        setClusters(clusterCrimes(snapshot))
+        setProgress(Math.round((doneCount / total) * 100))
 
-          if (snapshot.length > 0 && !resolvedMonth) {
-            const [y, m] = snapshot[0].month.split('-')
-            resolvedMonth = new Date(y, m - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
-            setDataMonth(resolvedMonth)
-          }
+        if (snapshot.length > 0 && !resolvedMonth) {
+          const [y, m] = snapshot[0].month.split('-')
+          resolvedMonth = new Date(y, m - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+          setDataMonth(resolvedMonth)
         }
-
-        // Pause between batches to avoid rate-limiting
-        if (b < batches.length - 1 && !controller.signal.aborted) {
-          await new Promise((r) => setTimeout(r, BATCH_DELAY))
-        }
-      }
+      }, controller.signal)
 
       if (!controller.signal.aborted) {
         setLoading(false)
         setProgress(100)
-        saveCache(all, resolvedMonth)   // persist for next 24 h
+        saveCache(all, resolvedMonth)
       }
     })()
 
