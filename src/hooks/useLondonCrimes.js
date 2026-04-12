@@ -12,6 +12,7 @@ const LONDON_GRID = [
   // ── Priority 1: dense central core (loads first) ──────────────
   { lat: 51.514, lng: -0.130 }, // Soho / West End
   { lat: 51.520, lng: -0.065 }, // Shoreditch / Clerkenwell
+  { lat: 51.514, lng: -0.098 }, // St. Paul's / City of London
   { lat: 51.498, lng: -0.125 }, // Westminster / Pimlico
   { lat: 51.497, lng: -0.082 }, // Borough / Bermondsey
   // ── Priority 2: inner ring ─────────────────────────────────────
