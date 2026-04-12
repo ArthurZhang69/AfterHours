@@ -36,6 +36,7 @@ const LONDON_GRID = [
   { lat: 51.497, lng: -0.055 }, // Bermondsey East / Rotherhithe (gap between Borough & Canary Wharf)
   { lat: 51.479, lng: -0.148 }, // Battersea / Nine Elms (gap between Fulham & Vauxhall)
   { lat: 51.514, lng: -0.170 }, // Bayswater / Hyde Park (gap between Paddington & Kensington)
+  { lat: 51.564, lng: -0.163 }, // Hampstead / West Hampstead (gap between Camden & Paddington)
   { lat: 51.477, lng: -0.024 }, // Deptford / Greenwich (gap between Canary Wharf & Lewisham)
 ]
 
