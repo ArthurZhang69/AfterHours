@@ -18,6 +18,7 @@ const LONDON_GRID = [
   { lat: 51.530, lng: -0.145 }, // Marylebone / Regent's Park
   { lat: 51.556, lng: -0.125 }, // Camden / Kentish Town
   { lat: 51.547, lng: -0.080 }, // Islington / Highbury
+  { lat: 51.532, lng: -0.106 }, // Angel / Islington south
   { lat: 51.516, lng: -0.015 }, // Whitechapel / Bethnal Green
   { lat: 51.474, lng: -0.120 }, // Vauxhall / Lambeth
   { lat: 51.474, lng: -0.085 }, // Peckham / Walworth
