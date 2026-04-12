@@ -37,6 +37,7 @@ const LONDON_GRID = [
   { lat: 51.479, lng: -0.148 }, // Battersea / Nine Elms (gap between Fulham & Vauxhall)
   { lat: 51.514, lng: -0.170 }, // Bayswater / Hyde Park (gap between Paddington & Kensington)
   { lat: 51.564, lng: -0.163 }, // Hampstead / West Hampstead (gap between Camden & Paddington)
+  { lat: 51.549, lng: -0.163 }, // Belsize Park (1.67km from Hampstead, outside radius)
   { lat: 51.477, lng: -0.024 }, // Deptford / Greenwich (gap between Canary Wharf & Lewisham)
 ]
 
