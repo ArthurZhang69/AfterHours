@@ -3,101 +3,64 @@ import { fetchNearbyCrimes } from '../services/api'
 import { clusterCrimes } from '../utils/risk'
 
 /**
- * 80-point hexagonal grid covering inner London (Zone 1–2 and beyond).
- * Generated with 1.8km spacing — guarantees no location is more than 1.6km
- * from its nearest grid point, eliminating all coverage gaps.
- * Ordered roughly centre-out so central areas appear first during progressive load.
+ * 43-point hexagonal grid covering inner London (Zone 1–2).
+ * Generated with 2.5km spacing — max gap to any triangle centre = 2.5/√3 ≈ 1.44km,
+ * which is within the API's 1.6km query radius. Full coverage, no gaps.
+ * Ordered roughly centre-out so central London appears first during progressive load.
  */
 const LONDON_GRID = [
   // ── Central core (loads first) ────────────────────────────────
-  { lat: 51.515, lng: -0.1211 },
-  { lat: 51.515, lng: -0.0951 },
-  { lat: 51.499, lng: -0.1341 },
-  { lat: 51.499, lng: -0.1081 },
-  { lat: 51.499, lng: -0.0821 },
-  { lat: 51.515, lng: -0.1471 },
-  { lat: 51.499, lng: -0.0562 },
-  { lat: 51.515, lng: -0.0692 },
-  { lat: 51.531, lng: -0.1341 },
-  { lat: 51.531, lng: -0.1081 },
-  { lat: 51.531, lng: -0.0821 },
-  { lat: 51.499, lng: -0.0302 },
-  { lat: 51.515, lng: -0.0432 },
-  { lat: 51.531, lng: -0.1601 },
-  { lat: 51.531, lng: -0.0562 },
+  { lat: 51.518, lng: -0.1348 },
+  { lat: 51.518, lng: -0.0987 },
+  { lat: 51.495, lng: -0.1168 },
+  { lat: 51.495, lng: -0.0807 },
+  { lat: 51.518, lng: -0.1709 },
+  { lat: 51.518, lng: -0.0627 },
+  { lat: 51.540, lng: -0.1168 },
+  { lat: 51.540, lng: -0.0807 },
+  { lat: 51.495, lng: -0.1528 },
+  { lat: 51.495, lng: -0.0446 },
+  { lat: 51.540, lng: -0.1528 },
+  { lat: 51.540, lng: -0.0446 },
   // ── Inner ring ────────────────────────────────────────────────
-  { lat: 51.482, lng: -0.1471 },
-  { lat: 51.482, lng: -0.1211 },
-  { lat: 51.482, lng: -0.0951 },
-  { lat: 51.482, lng: -0.0692 },
-  { lat: 51.482, lng: -0.0432 },
-  { lat: 51.499, lng: -0.1601 },
-  { lat: 51.499, lng: -0.0042 },
-  { lat: 51.515, lng: -0.1731 },
-  { lat: 51.515, lng: -0.1990 },
-  { lat: 51.515, lng: -0.0172 },
-  { lat: 51.515, lng:  0.0088 },
-  { lat: 51.531, lng: -0.1860 },
-  { lat: 51.531, lng: -0.0302 },
-  { lat: 51.531, lng: -0.0042 },
-  { lat: 51.531, lng:  0.0218 },
-  { lat: 51.547, lng: -0.1471 },
-  { lat: 51.547, lng: -0.1211 },
-  { lat: 51.547, lng: -0.0951 },
-  { lat: 51.547, lng: -0.0692 },
-  { lat: 51.547, lng: -0.0432 },
-  { lat: 51.547, lng: -0.1731 },
+  { lat: 51.518, lng: -0.0266 },
+  { lat: 51.518, lng:  0.0095 },
+  { lat: 51.495, lng: -0.0085 },
+  { lat: 51.518, lng: -0.2070 },
+  { lat: 51.540, lng: -0.1889 },
+  { lat: 51.540, lng: -0.0085 },
+  { lat: 51.563, lng: -0.1348 },
+  { lat: 51.563, lng: -0.0987 },
+  { lat: 51.563, lng: -0.1709 },
+  { lat: 51.563, lng: -0.0627 },
+  { lat: 51.495, lng: -0.1889 },
+  { lat: 51.473, lng: -0.1348 },
+  { lat: 51.473, lng: -0.0987 },
+  { lat: 51.473, lng: -0.0627 },
   // ── Outer ring ────────────────────────────────────────────────
-  { lat: 51.466, lng: -0.1601 },
-  { lat: 51.466, lng: -0.1341 },
-  { lat: 51.466, lng: -0.1081 },
-  { lat: 51.466, lng: -0.0821 },
-  { lat: 51.466, lng: -0.0562 },
-  { lat: 51.466, lng: -0.0302 },
-  { lat: 51.466, lng: -0.0042 },
-  { lat: 51.466, lng:  0.0218 },
-  { lat: 51.466, lng: -0.2120 },
-  { lat: 51.466, lng: -0.1860 },
-  { lat: 51.482, lng: -0.1731 },
-  { lat: 51.482, lng: -0.1990 },
-  { lat: 51.482, lng: -0.2250 },
-  { lat: 51.482, lng: -0.0172 },
-  { lat: 51.482, lng:  0.0088 },
-  { lat: 51.499, lng: -0.1860 },
-  { lat: 51.499, lng: -0.2120 },
-  { lat: 51.499, lng:  0.0218 },
-  { lat: 51.547, lng: -0.1990 },
-  { lat: 51.547, lng: -0.2250 },
-  { lat: 51.547, lng: -0.0172 },
-  { lat: 51.547, lng:  0.0088 },
-  { lat: 51.564, lng: -0.1601 },
-  { lat: 51.564, lng: -0.1341 },
-  { lat: 51.564, lng: -0.1081 },
-  { lat: 51.564, lng: -0.0821 },
-  { lat: 51.564, lng: -0.0562 },
-  { lat: 51.564, lng: -0.0302 },
-  { lat: 51.564, lng: -0.1860 },
-  { lat: 51.564, lng: -0.2120 },
+  { lat: 51.473, lng: -0.1709 },
+  { lat: 51.473, lng: -0.0266 },
+  { lat: 51.473, lng:  0.0095 },
+  { lat: 51.473, lng: -0.2070 },
+  { lat: 51.495, lng: -0.2250 },
+  { lat: 51.540, lng: -0.2250 },
+  { lat: 51.563, lng: -0.2070 },
+  { lat: 51.563, lng: -0.0266 },
+  { lat: 51.540, lng: -0.0085 },
   // ── Edge / outermost ──────────────────────────────────────────
-  { lat: 51.450, lng: -0.1731 },
-  { lat: 51.450, lng: -0.1471 },
-  { lat: 51.450, lng: -0.1211 },
-  { lat: 51.450, lng: -0.0951 },
-  { lat: 51.450, lng: -0.0692 },
-  { lat: 51.450, lng: -0.0432 },
-  { lat: 51.531, lng: -0.2120 },
-  { lat: 51.531, lng: -0.2250 },
-  { lat: 51.580, lng: -0.1731 },
-  { lat: 51.580, lng: -0.1471 },
-  { lat: 51.580, lng: -0.1211 },
-  { lat: 51.580, lng: -0.0951 },
-  { lat: 51.580, lng: -0.0692 },
-  { lat: 51.580, lng: -0.0432 },
+  { lat: 51.450, lng: -0.1528 },
+  { lat: 51.450, lng: -0.1168 },
+  { lat: 51.450, lng: -0.0807 },
+  { lat: 51.450, lng: -0.0446 },
+  { lat: 51.585, lng: -0.1528 },
+  { lat: 51.585, lng: -0.1168 },
+  { lat: 51.585, lng: -0.0807 },
+  { lat: 51.585, lng: -0.0446 },
 ]
 
-const CONCURRENCY = 6   // concurrent requests — police API allows ~15 req/s; retry handles 429
+const CONCURRENCY = 12  // police API allows ~15 req/s; 12 is safe with retry handling 429s
 
-const CACHE_KEY = 'afterhours_london_crimes_v3'
+const CACHE_KEY = 'afterhours_london_crimes_v4'
 const CACHE_TTL = 24 * 60 * 60 * 1000   // 24 h — crime data is monthly
 
 function loadCache() {
@@ -152,7 +115,7 @@ async function withConcurrency(tasks, limit, onDone, signal) {
 }
 
 /**
- * Fetches crime data across inner London via an 80-point hexagonal grid.
+ * Fetches crime data across inner London via a 43-point hexagonal grid.
  * Deduplicates by crime `id`, merges into a single dataset.
  *
  * Use this for map-wide heatmap + hotspot visualisation.
