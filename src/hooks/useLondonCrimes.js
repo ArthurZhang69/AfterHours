@@ -3,47 +3,101 @@ import { fetchNearbyCrimes } from '../services/api'
 import { clusterCrimes } from '../utils/risk'
 
 /**
- * 24-point grid covering inner London (roughly Zone 1–2).
- * Ordered centre-out so the most crime-dense, most visible area loads first
- * and the progressive heatmap is useful within the first few seconds.
- * Each point's ~1-mile API radius overlaps neighbours — no coverage gaps.
+ * 80-point hexagonal grid covering inner London (Zone 1–2 and beyond).
+ * Generated with 1.8km spacing — guarantees no location is more than 1.6km
+ * from its nearest grid point, eliminating all coverage gaps.
+ * Ordered roughly centre-out so central areas appear first during progressive load.
  */
 const LONDON_GRID = [
-  // ── Priority 1: dense central core (loads first) ──────────────
-  { lat: 51.514, lng: -0.130 }, // Soho / West End
-  { lat: 51.520, lng: -0.065 }, // Shoreditch / Clerkenwell
-  { lat: 51.514, lng: -0.098 }, // St. Paul's / City of London
-  { lat: 51.498, lng: -0.125 }, // Westminster / Pimlico
-  { lat: 51.497, lng: -0.082 }, // Borough / Bermondsey
-  // ── Priority 2: inner ring ─────────────────────────────────────
-  { lat: 51.530, lng: -0.145 }, // Marylebone / Regent's Park
-  { lat: 51.556, lng: -0.125 }, // Camden / Kentish Town
-  { lat: 51.547, lng: -0.080 }, // Islington / Highbury
-  { lat: 51.532, lng: -0.106 }, // Angel / Islington south
-  { lat: 51.516, lng: -0.015 }, // Whitechapel / Bethnal Green
-  { lat: 51.474, lng: -0.120 }, // Vauxhall / Lambeth
-  { lat: 51.474, lng: -0.085 }, // Peckham / Walworth
-  // ── Priority 3: outer areas ────────────────────────────────────
-  { lat: 51.530, lng: -0.200 }, // Paddington / Notting Hill
-  { lat: 51.510, lng: -0.195 }, // Kensington / Hammersmith
-  { lat: 51.487, lng: -0.175 }, // Fulham / Chelsea
-  { lat: 51.505, lng:  0.010 }, // Canary Wharf / Poplar
-  { lat: 51.462, lng: -0.120 }, // Brixton / Clapham
-  { lat: 51.463, lng: -0.072 }, // Lewisham / New Cross
-  // ── Gap fills (previously uncovered) ──────────────────────────
-  { lat: 51.545, lng: -0.055 }, // Hackney / Dalston (gap between Islington & Shoreditch)
-  { lat: 51.518, lng: -0.040 }, // Stepney / Mile End (gap between Shoreditch & Whitechapel)
-  { lat: 51.497, lng: -0.055 }, // Bermondsey East / Rotherhithe (gap between Borough & Canary Wharf)
-  { lat: 51.479, lng: -0.148 }, // Battersea / Nine Elms (gap between Fulham & Vauxhall)
-  { lat: 51.514, lng: -0.170 }, // Bayswater / Hyde Park (gap between Paddington & Kensington)
-  { lat: 51.564, lng: -0.163 }, // Hampstead / West Hampstead (gap between Camden & Paddington)
-  { lat: 51.549, lng: -0.163 }, // Belsize Park (1.67km from Hampstead, outside radius)
-  { lat: 51.477, lng: -0.024 }, // Deptford / Greenwich (gap between Canary Wharf & Lewisham)
+  // ── Central core (loads first) ────────────────────────────────
+  { lat: 51.515, lng: -0.1211 },
+  { lat: 51.515, lng: -0.0951 },
+  { lat: 51.499, lng: -0.1341 },
+  { lat: 51.499, lng: -0.1081 },
+  { lat: 51.499, lng: -0.0821 },
+  { lat: 51.515, lng: -0.1471 },
+  { lat: 51.499, lng: -0.0562 },
+  { lat: 51.515, lng: -0.0692 },
+  { lat: 51.531, lng: -0.1341 },
+  { lat: 51.531, lng: -0.1081 },
+  { lat: 51.531, lng: -0.0821 },
+  { lat: 51.499, lng: -0.0302 },
+  { lat: 51.515, lng: -0.0432 },
+  { lat: 51.531, lng: -0.1601 },
+  { lat: 51.531, lng: -0.0562 },
+  // ── Inner ring ────────────────────────────────────────────────
+  { lat: 51.482, lng: -0.1471 },
+  { lat: 51.482, lng: -0.1211 },
+  { lat: 51.482, lng: -0.0951 },
+  { lat: 51.482, lng: -0.0692 },
+  { lat: 51.482, lng: -0.0432 },
+  { lat: 51.499, lng: -0.1601 },
+  { lat: 51.499, lng: -0.0042 },
+  { lat: 51.515, lng: -0.1731 },
+  { lat: 51.515, lng: -0.1990 },
+  { lat: 51.515, lng: -0.0172 },
+  { lat: 51.515, lng:  0.0088 },
+  { lat: 51.531, lng: -0.1860 },
+  { lat: 51.531, lng: -0.0302 },
+  { lat: 51.531, lng: -0.0042 },
+  { lat: 51.531, lng:  0.0218 },
+  { lat: 51.547, lng: -0.1471 },
+  { lat: 51.547, lng: -0.1211 },
+  { lat: 51.547, lng: -0.0951 },
+  { lat: 51.547, lng: -0.0692 },
+  { lat: 51.547, lng: -0.0432 },
+  { lat: 51.547, lng: -0.1731 },
+  // ── Outer ring ────────────────────────────────────────────────
+  { lat: 51.466, lng: -0.1601 },
+  { lat: 51.466, lng: -0.1341 },
+  { lat: 51.466, lng: -0.1081 },
+  { lat: 51.466, lng: -0.0821 },
+  { lat: 51.466, lng: -0.0562 },
+  { lat: 51.466, lng: -0.0302 },
+  { lat: 51.466, lng: -0.0042 },
+  { lat: 51.466, lng:  0.0218 },
+  { lat: 51.466, lng: -0.2120 },
+  { lat: 51.466, lng: -0.1860 },
+  { lat: 51.482, lng: -0.1731 },
+  { lat: 51.482, lng: -0.1990 },
+  { lat: 51.482, lng: -0.2250 },
+  { lat: 51.482, lng: -0.0172 },
+  { lat: 51.482, lng:  0.0088 },
+  { lat: 51.499, lng: -0.1860 },
+  { lat: 51.499, lng: -0.2120 },
+  { lat: 51.499, lng:  0.0218 },
+  { lat: 51.547, lng: -0.1990 },
+  { lat: 51.547, lng: -0.2250 },
+  { lat: 51.547, lng: -0.0172 },
+  { lat: 51.547, lng:  0.0088 },
+  { lat: 51.564, lng: -0.1601 },
+  { lat: 51.564, lng: -0.1341 },
+  { lat: 51.564, lng: -0.1081 },
+  { lat: 51.564, lng: -0.0821 },
+  { lat: 51.564, lng: -0.0562 },
+  { lat: 51.564, lng: -0.0302 },
+  { lat: 51.564, lng: -0.1860 },
+  { lat: 51.564, lng: -0.2120 },
+  // ── Edge / outermost ──────────────────────────────────────────
+  { lat: 51.450, lng: -0.1731 },
+  { lat: 51.450, lng: -0.1471 },
+  { lat: 51.450, lng: -0.1211 },
+  { lat: 51.450, lng: -0.0951 },
+  { lat: 51.450, lng: -0.0692 },
+  { lat: 51.450, lng: -0.0432 },
+  { lat: 51.531, lng: -0.2120 },
+  { lat: 51.531, lng: -0.2250 },
+  { lat: 51.580, lng: -0.1731 },
+  { lat: 51.580, lng: -0.1471 },
+  { lat: 51.580, lng: -0.1211 },
+  { lat: 51.580, lng: -0.0951 },
+  { lat: 51.580, lng: -0.0692 },
+  { lat: 51.580, lng: -0.0432 },
 ]
 
 const CONCURRENCY = 6   // concurrent requests — police API allows ~15 req/s; retry handles 429
 
-const CACHE_KEY = 'afterhours_london_crimes_v2'
+const CACHE_KEY = 'afterhours_london_crimes_v3'
 const CACHE_TTL = 24 * 60 * 60 * 1000   // 24 h — crime data is monthly
 
 function loadCache() {
@@ -71,7 +125,7 @@ async function withConcurrency(tasks, limit, onDone, signal) {
   let active = 0
   let done = 0
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     function next() {
       if (signal?.aborted) { resolve(); return }
       while (active < limit && queue.length > 0) {
@@ -93,13 +147,12 @@ async function withConcurrency(tasks, limit, onDone, signal) {
       }
     }
     next()
-    // Edge case: empty task list
     if (queue.length === 0 && active === 0) resolve()
   })
 }
 
 /**
- * Fetches crime data across inner London via a 16-point grid.
+ * Fetches crime data across inner London via an 80-point hexagonal grid.
  * Deduplicates by crime `id`, merges into a single dataset.
  *
  * Use this for map-wide heatmap + hotspot visualisation.
@@ -146,7 +199,6 @@ export function useLondonCrimes(date) {
       )
 
       await withConcurrency(tasks, CONCURRENCY, (crimes, doneCount) => {
-        // Merge deduplicated crimes
         for (const crime of crimes) {
           const key = crime.id ?? `${crime.location?.latitude},${crime.location?.longitude},${crime.category}`
           if (!seen.has(key)) {
@@ -155,7 +207,6 @@ export function useLondonCrimes(date) {
           }
         }
 
-        // Progressive update — update map after every completed request
         const snapshot = [...all]
         setCrimes(snapshot)
         setClusters(clusterCrimes(snapshot))
