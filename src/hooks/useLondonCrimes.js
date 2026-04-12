@@ -3,7 +3,7 @@ import { fetchNearbyCrimes } from '../services/api'
 import { clusterCrimes } from '../utils/risk'
 
 /**
- * 16-point grid covering inner London (roughly Zone 1–2).
+ * 24-point grid covering inner London (roughly Zone 1–2).
  * Ordered centre-out so the most crime-dense, most visible area loads first
  * and the progressive heatmap is useful within the first few seconds.
  * Each point's ~1-mile API radius overlaps neighbours — no coverage gaps.
@@ -30,6 +30,13 @@ const LONDON_GRID = [
   { lat: 51.505, lng:  0.010 }, // Canary Wharf / Poplar
   { lat: 51.462, lng: -0.120 }, // Brixton / Clapham
   { lat: 51.463, lng: -0.072 }, // Lewisham / New Cross
+  // ── Gap fills (previously uncovered) ──────────────────────────
+  { lat: 51.545, lng: -0.055 }, // Hackney / Dalston (gap between Islington & Shoreditch)
+  { lat: 51.518, lng: -0.040 }, // Stepney / Mile End (gap between Shoreditch & Whitechapel)
+  { lat: 51.497, lng: -0.055 }, // Bermondsey East / Rotherhithe (gap between Borough & Canary Wharf)
+  { lat: 51.479, lng: -0.148 }, // Battersea / Nine Elms (gap between Fulham & Vauxhall)
+  { lat: 51.514, lng: -0.170 }, // Bayswater / Hyde Park (gap between Paddington & Kensington)
+  { lat: 51.477, lng: -0.024 }, // Deptford / Greenwich (gap between Canary Wharf & Lewisham)
 ]
 
 const BATCH_SIZE    = 2     // 2 concurrent — police API allows ~15 req/s; retry handles 429
