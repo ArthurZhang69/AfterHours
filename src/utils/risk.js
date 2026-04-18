@@ -188,17 +188,16 @@ export function filterCrimesByRadius(crimes, center, radiusKm = 0.5) {
 // where r(e) ∈ [0, 1] is a per-segment risk derived from the local KDE
 // density at the segment midpoint, mapped through r = 1 − exp(−λ / s).
 
-const SEGMENT_BANDWIDTH_KM    = 0.1   // h — narrow kernel for corridor-local density
-const SEGMENT_SATURATION      = 30    // s — density at which r(e) ≈ 0.63
+const SEGMENT_BANDWIDTH_KM    = 0.25  // h — 250 m corridor kernel (wider → smoother)
 const DEFAULT_MAX_SEGMENTS    = 20    // downsample polylines to keep scoring fast
+// Two separate saturation scales — one for the multiplicative total, one for
+// the peak-segment warning. Using a single scale either over-saturates the
+// product (Galbrun's formula assumes nearly-zero r(e) on most edges, which
+// doesn't hold for dense London data) or starves the peak signal.
+const TOTAL_SATURATION        = 3000  // keep r(e) small so Π(1-r(e)) has range
+const PEAK_SATURATION         = 400   // density ≈ 280 → peak ≈ 0.50 (warning trigger)
 
-/**
- * Maps a raw KDE density λ to a segment probability r(e) ∈ [0, 1] via
- * r = 1 − exp(−λ / s). Monotone in λ; saturates smoothly.
- */
-function segmentProbability(density, scale = SEGMENT_SATURATION) {
-  return 1 - Math.exp(-density / scale)
-}
+const expSat = (density, scale) => 1 - Math.exp(-density / scale)
 
 /**
  * Scores a route polyline against a crime dataset using Galbrun et al.'s
@@ -229,28 +228,35 @@ export function scoreRoute(routePoints, crimes, opts = {}) {
   for (let i = 0; i < n; i += step) sample.push(routePoints[i])
   if (sample[sample.length - 1] !== routePoints[n - 1]) sample.push(routePoints[n - 1])
 
-  // Per-segment risk: r(e) = 1 − exp(−λ(mid) / s)
+  // Per-segment risk — each midpoint carries two values:
+  //   risk — r(e) used in Galbrun's total (low saturation → product has range)
+  //   peak — used in Galbrun's max (higher saturation → warnings fire meaningfully)
   const segments = []
   for (let i = 0; i < sample.length - 1; i++) {
     const a = sample[i], b = sample[i + 1]
     const mid = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 }
     const density = kdeDensity(crimes, mid, bandwidthKm)
-    segments.push({ ...mid, risk: segmentProbability(density) })
+    segments.push({
+      ...mid,
+      density,
+      risk: expSat(density, TOTAL_SATURATION),
+      peak: expSat(density, PEAK_SATURATION),
+    })
   }
 
   // Formula 2: r_t = 1 − Π(1 − r(e));  Formula 3: r_m = max r(e)
   // Sum log(1 − r) instead of multiplying to stay numerically stable.
   let logSafe = 0
-  let maxR    = 0
+  let maxPeak = 0
   for (const s of segments) {
     logSafe += Math.log(1 - Math.min(s.risk, 0.9999))
-    if (s.risk > maxR) maxR = s.risk
+    if (s.peak > maxPeak) maxPeak = s.peak
   }
   const total = 1 - Math.exp(logSafe)
 
   return {
     total:    Math.round(total * 100),
-    max:      Math.round(maxR * 100),
+    max:      Math.round(maxPeak * 100),
     segments,
   }
 }
