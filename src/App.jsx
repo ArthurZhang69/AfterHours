@@ -88,7 +88,7 @@ export default function App() {
   useEffect(() => {
     if (!nearbyLocalCrimes?.length || !londonLocation) return
     const local = nearbyLocalCrimes
-    const score = areaRiskScore(local)
+    const score = areaRiskScore(local, londonLocation)
     const level = getRiskLevel(score)
     if (level === 'HIGH' || level === 'CRITICAL') {
       setToast({ score, level })
@@ -231,6 +231,7 @@ export default function App() {
             )}
             <AreaCard
               crimes={nearbyLocalCrimes}
+              center={crimeCenter}
               stations={nearbyStations}
               dataMonth={dataMonth}
               loading={crimeLoading}

@@ -74,6 +74,17 @@ export function clusterSize(count) {
 }
 
 // ─── Area risk score (0 – 100) ───────────────────────────────
+//
+// Model: KDE-based area risk following Galbrun, Pelechrinis & Terzi (2016),
+// "Urban navigation beyond shortest route: The case of safe paths".
+//   λ(p) = Σ wᵢ · exp( -||cᵢ − p||² / (2h²) )
+// where wᵢ is the severity weight of crime i and ||cᵢ − p|| is the great-
+// circle distance (km) from the query point p to crime i. Crimes close to
+// p contribute more than far crimes; the smooth Gaussian kernel replaces
+// the old hard-radius flat sum.
+
+const DEFAULT_BANDWIDTH_KM = 0.4   // h — 400 m kernel bandwidth for area risk
+const KDE_CUTOFF_SIGMAS    = 3     // beyond 3h, exp(-d²/2h²) < 0.012
 
 /**
  * Converts a raw weighted crime score to a normalised 0-100 value.
@@ -83,10 +94,42 @@ export function normaliseScore(rawScore, maxExpected = 150) {
   return Math.min(100, Math.round((rawScore / maxExpected) * 100))
 }
 
-export function areaRiskScore(crimes) {
-  if (!crimes.length) return 0
-  const raw = crimes.reduce((sum, c) => sum + (WEIGHTS[c.category] ?? DEFAULT_WEIGHT), 0)
-  // maxExpected calibrated for central London borough volumes (~3000 raw ≈ very high crime)
+/**
+ * Gaussian KDE density at point `center`, summed over `crimes`.
+ * Returns the raw unnormalised λ(p).
+ */
+export function kdeDensity(crimes, center, bandwidthKm = DEFAULT_BANDWIDTH_KM) {
+  if (!crimes?.length || center?.lat == null || center?.lng == null) return 0
+  const h2     = bandwidthKm * bandwidthKm
+  const cutoff = KDE_CUTOFF_SIGMAS * bandwidthKm
+  let sum = 0
+  for (const c of crimes) {
+    const d = haversineKm(
+      center.lat, center.lng,
+      parseFloat(c.location.latitude),
+      parseFloat(c.location.longitude),
+    )
+    if (d > cutoff) continue
+    const w = WEIGHTS[c.category] ?? DEFAULT_WEIGHT
+    sum += w * Math.exp(-(d * d) / (2 * h2))
+  }
+  return sum
+}
+
+/**
+ * Area risk score on 0–100.
+ *   Primary path (center given): KDE density normalised by `maxExpected`.
+ *   Fallback (no center): legacy flat weighted sum — preserved for any
+ *   caller that has already spatially filtered its crime list.
+ */
+export function areaRiskScore(crimes, center, bandwidthKm = DEFAULT_BANDWIDTH_KM) {
+  if (!crimes?.length) return 0
+  if (center?.lat != null && center?.lng != null) {
+    const density = kdeDensity(crimes, center, bandwidthKm)
+    // Calibration: ~200 raw KDE weight = "hotspot" in inner London at h=400 m.
+    return normaliseScore(density, 200)
+  }
+  const raw = crimes.reduce((s, c) => s + (WEIGHTS[c.category] ?? DEFAULT_WEIGHT), 0)
   return normaliseScore(raw, 3000)
 }
 
@@ -135,32 +178,78 @@ export function filterCrimesByRadius(crimes, center, radiusKm = 0.5) {
 }
 
 // ─── Route risk scoring ───────────────────────────────────────
+//
+// Following Galbrun et al. (2016) formulas 2 & 3:
+//   Total route risk:  r_t(P) = 1 − Π (1 − r(e))       ← overall exposure
+//   Max route risk:    r_m(P) = max r(e)               ← warning trigger
+// where r(e) ∈ [0, 1] is a per-segment risk derived from the local KDE
+// density at the segment midpoint, mapped through r = 1 − exp(−λ / s).
+
+const SEGMENT_BANDWIDTH_KM    = 0.1   // h — narrow kernel for corridor-local density
+const SEGMENT_SATURATION      = 30    // s — density at which r(e) ≈ 0.63
+const DEFAULT_MAX_SEGMENTS    = 20    // downsample polylines to keep scoring fast
 
 /**
- * Scores a route (array of {lat, lng} waypoints) against a crime dataset.
- * Counts crimes within `corridorKm` kilometres of any point on the path.
+ * Maps a raw KDE density λ to a segment probability r(e) ∈ [0, 1] via
+ * r = 1 − exp(−λ / s). Monotone in λ; saturates smoothly.
  */
-export function scoreRoute(routePoints, crimes, corridorKm = 0.1) {
-  if (!routePoints?.length || !crimes?.length) return 0
+function segmentProbability(density, scale = SEGMENT_SATURATION) {
+  return 1 - Math.exp(-density / scale)
+}
 
-  let totalScore = 0
-  const counted  = new Set()
+/**
+ * Scores a route polyline against a crime dataset using Galbrun et al.'s
+ * total and max route-risk formulas.
+ *
+ * @param {Array<{lat:number,lng:number}>} routePoints — polyline waypoints
+ * @param {Array} crimes — crime incidents (data.police.uk format)
+ * @param {Object} [opts]
+ * @param {number} [opts.bandwidthKm=0.1]  — KDE bandwidth for segment risk
+ * @param {number} [opts.maxSegments=20]   — downsample cap for long polylines
+ * @returns {{ total:number, max:number, segments:Array }}
+ *   total, max on 0–100; segments is an array of {lat, lng, risk} midpoints.
+ */
+export function scoreRoute(routePoints, crimes, opts = {}) {
+  const {
+    bandwidthKm = SEGMENT_BANDWIDTH_KM,
+    maxSegments = DEFAULT_MAX_SEGMENTS,
+  } = opts
 
-  for (const crime of crimes) {
-    const cLat = parseFloat(crime.location.latitude)
-    const cLng = parseFloat(crime.location.longitude)
-
-    for (const point of routePoints) {
-      const dist = haversineKm(point.lat, point.lng, cLat, cLng)
-      if (dist <= corridorKm && !counted.has(crime.id)) {
-        totalScore += WEIGHTS[crime.category] ?? DEFAULT_WEIGHT
-        counted.add(crime.id)
-        break
-      }
-    }
+  if (!routePoints?.length || !crimes?.length) {
+    return { total: 0, max: 0, segments: [] }
   }
 
-  return normaliseScore(totalScore, 80)
+  // Stride-sample the polyline so we compute at most `maxSegments` midpoints.
+  const n      = routePoints.length
+  const step   = Math.max(1, Math.floor(n / maxSegments))
+  const sample = []
+  for (let i = 0; i < n; i += step) sample.push(routePoints[i])
+  if (sample[sample.length - 1] !== routePoints[n - 1]) sample.push(routePoints[n - 1])
+
+  // Per-segment risk: r(e) = 1 − exp(−λ(mid) / s)
+  const segments = []
+  for (let i = 0; i < sample.length - 1; i++) {
+    const a = sample[i], b = sample[i + 1]
+    const mid = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 }
+    const density = kdeDensity(crimes, mid, bandwidthKm)
+    segments.push({ ...mid, risk: segmentProbability(density) })
+  }
+
+  // Formula 2: r_t = 1 − Π(1 − r(e));  Formula 3: r_m = max r(e)
+  // Sum log(1 − r) instead of multiplying to stay numerically stable.
+  let logSafe = 0
+  let maxR    = 0
+  for (const s of segments) {
+    logSafe += Math.log(1 - Math.min(s.risk, 0.9999))
+    if (s.risk > maxR) maxR = s.risk
+  }
+  const total = 1 - Math.exp(logSafe)
+
+  return {
+    total:    Math.round(total * 100),
+    max:      Math.round(maxR * 100),
+    segments,
+  }
 }
 
 // ─── Haversine distance (km) ──────────────────────────────────

@@ -6,7 +6,7 @@ import { CRIME_COLORS, CRIME_LABELS } from '../constants/mapStyles'
  * Area summary card shown in the bottom sheet.
  * Displays risk score, crime breakdown, and nearby stations.
  */
-export default function AreaCard({ crimes, stations, dataMonth, loading, error, onRouteMode, browseName }) {
+export default function AreaCard({ crimes, center, stations, dataMonth, loading, error, onRouteMode, browseName }) {
   if (loading) {
     return (
       <div className="area-card area-card--loading">
@@ -25,7 +25,7 @@ export default function AreaCard({ crimes, stations, dataMonth, loading, error, 
     )
   }
 
-  const score = crimes?.length ? areaRiskScore(crimes) : 0
+  const score = crimes?.length ? areaRiskScore(crimes, center) : 0
   const color = getRiskColor(score)
 
   // Build category breakdown

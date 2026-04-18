@@ -8,7 +8,9 @@ import { planJourney } from '../services/api'
 // Defined outside RoutePanel so React does not unmount/remount it on every
 // parent render (defining components inside a render function discards and
 // recreates them, losing state and triggering extra DOM work).
-function RouteCard({ id, score, meta, activeRoute, recommended, onRouteSelect }) {
+const WARNING_MAX_THRESHOLD = 70   // r_m ≥ 0.70 → flag a high-risk segment
+
+function RouteCard({ id, score, maxRisk, meta, activeRoute, recommended, onRouteSelect }) {
   const isActive = activeRoute === id
   const color    = id === 'A' ? ROUTE_COLORS.safe : ROUTE_COLORS.risky
   const rColor   = getRiskColor(score)
@@ -34,6 +36,11 @@ function RouteCard({ id, score, meta, activeRoute, recommended, onRouteSelect })
           <div className="route-card__label-col">
             <span className="route-card__id" style={{ color }}>Route {id}</span>
             {isRec && <span className="route-card__recommended">Recommended</span>}
+            {maxRisk >= WARNING_MAX_THRESHOLD && (
+              <span className="route-card__warning" title={`Contains a high-risk segment (peak ${maxRisk}/100)`}>
+                ⚠ High-risk segment
+              </span>
+            )}
           </div>
           <RiskBadge score={score} />
         </div>
@@ -89,11 +96,12 @@ export default function RoutePanel({
   const org  = origin      ?? DEMO_ORIGIN
   const dest = destination ?? DEMO_DESTINATION
 
-  // Score each route
-  const scoreA = scoreRoute(routePathA ?? DEMO_ROUTE_A, crimes ?? [])
-  const scoreB = scoreRoute(routePathB ?? DEMO_ROUTE_B, crimes ?? [])
+  // Score each route — Galbrun et al. (2016) formulas 2 (total) & 3 (max).
+  // `total` drives the headline score; `max` flags any single high-risk segment.
+  const { total: scoreA, max: maxA } = scoreRoute(routePathA ?? DEMO_ROUTE_A, crimes ?? [])
+  const { total: scoreB, max: maxB } = scoreRoute(routePathB ?? DEMO_ROUTE_B, crimes ?? [])
 
-  // Recommended = lower risk
+  // Recommended = lower total exposure
   const recommended = scoreA <= scoreB ? 'A' : 'B'
 
   // Fetch TfL journey options
@@ -156,8 +164,8 @@ export default function RoutePanel({
 
       {/* Route cards */}
       <div className="route-panel__cards">
-        <RouteCard id="A" score={scoreA} meta={metaA} activeRoute={activeRoute} recommended={recommended} onRouteSelect={onRouteSelect} />
-        <RouteCard id="B" score={scoreB} meta={metaB} activeRoute={activeRoute} recommended={recommended} onRouteSelect={onRouteSelect} />
+        <RouteCard id="A" score={scoreA} maxRisk={maxA} meta={metaA} activeRoute={activeRoute} recommended={recommended} onRouteSelect={onRouteSelect} />
+        <RouteCard id="B" score={scoreB} maxRisk={maxB} meta={metaB} activeRoute={activeRoute} recommended={recommended} onRouteSelect={onRouteSelect} />
       </div>
 
       {/* TfL public transport options */}
