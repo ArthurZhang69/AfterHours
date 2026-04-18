@@ -126,8 +126,9 @@ export function areaRiskScore(crimes, center, bandwidthKm = DEFAULT_BANDWIDTH_KM
   if (!crimes?.length) return 0
   if (center?.lat != null && center?.lng != null) {
     const density = kdeDensity(crimes, center, bandwidthKm)
-    // Calibration: ~200 raw KDE weight = "hotspot" in inner London at h=400 m.
-    return normaliseScore(density, 200)
+    // Calibration: typical inner-London density at h=400 m sits around 150–300.
+    // Cap at 500 so moderate areas score ~30–50 and only true hotspots saturate.
+    return normaliseScore(density, 500)
   }
   const raw = crimes.reduce((s, c) => s + (WEIGHTS[c.category] ?? DEFAULT_WEIGHT), 0)
   return normaliseScore(raw, 3000)
