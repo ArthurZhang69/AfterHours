@@ -188,16 +188,19 @@ export function filterCrimesByRadius(crimes, center, radiusKm = 0.5) {
 // where r(e) ∈ [0, 1] is a per-segment risk derived from the local KDE
 // density at the segment midpoint, mapped through r = 1 − exp(−λ / s).
 
-const SEGMENT_BANDWIDTH_KM    = 0.25  // h — 250 m corridor kernel (wider → smoother)
-const DEFAULT_MAX_SEGMENTS    = 20    // downsample polylines to keep scoring fast
-// Two separate saturation scales — one for the multiplicative total, one for
-// the peak-segment warning. Using a single scale either over-saturates the
-// product (Galbrun's formula assumes nearly-zero r(e) on most edges, which
-// doesn't hold for dense London data) or starves the peak signal.
-const TOTAL_SATURATION        = 3000  // keep r(e) small so Π(1-r(e)) has range
-const PEAK_SATURATION         = 400   // density ≈ 280 → peak ≈ 0.50 (warning trigger)
+const SEGMENT_BANDWIDTH_KM    = 0.25  // h — 250 m corridor kernel
+const DEFAULT_MAX_SEGMENTS    = 30    // downsample polylines to keep scoring fast
+// Length-weighted Poisson formulation of Galbrun's r(e):
+//   r(e) = 1 − exp(−μ(e) · L(e))  where μ(e) ∝ local KDE density
+//   r_t  = 1 − Π(1−r(e)) = 1 − exp(−Σ μ(e)·L(e))
+// This makes total exposure scale with route length (not with segment count)
+// and prevents saturation on dense-city routes where fixed 20-segment
+// products always collapse to ~1.
+const TOTAL_SATURATION        = 2500  // (weighted-density × km); calibrated so a
+                                      //   1.5 km central-London route ≈ 60
+const PEAK_SATURATION         = 400   // raw-density scale for the warning metric
 
-const expSat = (density, scale) => 1 - Math.exp(-density / scale)
+const expSat = (x, scale) => 1 - Math.exp(-x / scale)
 
 /**
  * Scores a route polyline against a crime dataset using Galbrun et al.'s
@@ -228,31 +231,29 @@ export function scoreRoute(routePoints, crimes, opts = {}) {
   for (let i = 0; i < n; i += step) sample.push(routePoints[i])
   if (sample[sample.length - 1] !== routePoints[n - 1]) sample.push(routePoints[n - 1])
 
-  // Per-segment risk — each midpoint carries two values:
-  //   risk — r(e) used in Galbrun's total (low saturation → product has range)
-  //   peak — used in Galbrun's max (higher saturation → warnings fire meaningfully)
+  // Per-segment exposure — density × length. μ(e)·L(e) is the expected
+  // weighted crime encounter count on that segment (up to a constant).
   const segments = []
+  let totalExposure = 0
+  let maxPeak       = 0
   for (let i = 0; i < sample.length - 1; i++) {
     const a = sample[i], b = sample[i + 1]
-    const mid = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 }
+    const mid     = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 }
+    const lenKm   = haversineKm(a.lat, a.lng, b.lat, b.lng)
     const density = kdeDensity(crimes, mid, bandwidthKm)
-    segments.push({
-      ...mid,
-      density,
-      risk: expSat(density, TOTAL_SATURATION),
-      peak: expSat(density, PEAK_SATURATION),
-    })
+    const exposure = density * lenKm
+
+    totalExposure += exposure
+    const peak = expSat(density, PEAK_SATURATION)
+    if (peak > maxPeak) maxPeak = peak
+
+    segments.push({ ...mid, density, lenKm, exposure, peak })
   }
 
-  // Formula 2: r_t = 1 − Π(1 − r(e));  Formula 3: r_m = max r(e)
-  // Sum log(1 − r) instead of multiplying to stay numerically stable.
-  let logSafe = 0
-  let maxPeak = 0
-  for (const s of segments) {
-    logSafe += Math.log(1 - Math.min(s.risk, 0.9999))
-    if (s.peak > maxPeak) maxPeak = s.peak
-  }
-  const total = 1 - Math.exp(logSafe)
+  // Galbrun formulas 2 & 3 (length-weighted Poisson form):
+  //   r_t = 1 − exp(−Σ μ(e)·L(e) / s)
+  //   r_m = max r(e) — reported via the separately-calibrated `peak` channel
+  const total = expSat(totalExposure, TOTAL_SATURATION)
 
   return {
     total:    Math.round(total * 100),
