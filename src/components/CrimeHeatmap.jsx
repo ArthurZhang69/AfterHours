@@ -19,9 +19,18 @@ const WEIGHTS = {
  * At zoom 14 this is ~18 px; at zoom 17 it is ~140 px (crimes blend properly).
  * Clamped so the canvas never becomes impractically large at extreme zooms.
  */
-const GEO_RADIUS_M = 140   // metres — controls the "spread" of each crime
-const MIN_RADIUS_PX = 8    // never smaller (prevents invisible dots)
-const MAX_RADIUS_PX = 70   // never larger  (prevents huge canvas blowup)
+const GEO_RADIUS_M = 85    // metres — controls the "spread" of each crime
+const MIN_RADIUS_PX = 6    // never smaller (prevents invisible dots)
+const MAX_RADIUS_PX = 50   // never larger  (prevents huge canvas blowup)
+
+/**
+ * Internal render scale. Canvas backing store is drawn at this fraction of
+ * the display size, then CSS-scaled up. A KDE heatmap is already a blurred
+ * continuous field, so halving resolution is visually imperceptible but
+ * quarters the number of pixels the JS color-ramp loop has to touch —
+ * the single biggest CPU cost of a full redraw on iOS Safari.
+ */
+const RENDER_SCALE = 0.5
 
 /**
  * Small padding around the viewport — the canvas is hidden during active
@@ -129,6 +138,12 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
   // Cache the last-used spot so we don't rebuild it on every draw when
   // the radius hasn't changed (common during plain pan/data updates).
   const spotCacheRef = useRef({ radius: -1, canvas: null })
+  // Cache the full pixel composition. When only the viewport pans (same
+  // zoom, same crimes, same category) we can skip the 2-phase render and
+  // just reposition the canvas via CSS left/top — the single biggest win,
+  // since pure-pan is the most common interaction.
+  const renderCacheRef = useRef({ zoom: -1, cat: '', len: -1 })
+  const rafRef         = useRef(null)
 
   // ── Create overlay once when the map is available ──────────────────────
   useEffect(() => {
@@ -157,61 +172,75 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
       const { crimes: c, category: cat } = dataRef.current
       if (!c?.length) return
 
-      const filtered = cat === 'all' ? c : c.filter((x) => x.category === cat)
-      if (!filtered.length) return
-
-      const points = filtered.map((x) => ({
-        lat:    parseFloat(x.location.latitude),
-        lng:    parseFloat(x.location.longitude),
-        weight: WEIGHTS[x.category] ?? 1.0,
-      }))
+      const zoom = map.getZoom() ?? 14
+      const cache = renderCacheRef.current
 
       const ne = proj.fromLatLngToDivPixel(bounds.getNorthEast())
       const sw = proj.fromLatLngToDivPixel(bounds.getSouthWest())
-
-      // ── Dynamic geographic radius ────────────────────────────────────────
-      const RADIUS = geoRadiusToPx(proj, bounds.getCenter())
-
-      // Rebuild spot only when radius changes (avoids canvas allocation every draw)
-      if (spotCacheRef.current.radius !== RADIUS) {
-        spotCacheRef.current = { radius: RADIUS, canvas: buildSpot(RADIUS) }
-      }
-      const SPOT = spotCacheRef.current.canvas
-
-      // Viewport dimensions in pane-pixel space
-      const vpW = Math.abs(ne.x - sw.x)
-      const vpH = Math.abs(sw.y - ne.y)
+      const vpW  = Math.abs(ne.x - sw.x)
+      const vpH  = Math.abs(sw.y - ne.y)
       const bufX = Math.ceil(vpW * PAN_BUFFER)
       const bufY = Math.ceil(vpH * PAN_BUFFER)
 
-      // Canvas covers viewport + buffer on all four sides
+      // ── Fast path: zoom/data/category unchanged → reposition only ────────
+      // A pan at fixed zoom over the same crime set produces an identical
+      // density image; the old pixels are still valid. Just re-anchor the
+      // element and return. Skips projection-per-point, Gaussian compositing,
+      // and the color-ramp pixel loop entirely.
+      if (
+        cache.zoom === zoom &&
+        cache.cat  === cat  &&
+        cache.len  === c.length &&
+        this._canvas.width > 0
+      ) {
+        const RADIUS = spotCacheRef.current.radius
+        const left   = Math.floor(Math.min(ne.x, sw.x)) - bufX - RADIUS
+        const top    = Math.floor(Math.min(ne.y, sw.y)) - bufY - RADIUS
+        // Cached pixels were drawn against an earlier (left, top). Shift the
+        // element by the delta so the pixel content stays geographically
+        // aligned. Since pane pixel space translates uniformly during pan,
+        // a single CSS translate suffices.
+        this._canvas.style.left = `${left}px`
+        this._canvas.style.top  = `${top}px`
+        this._canvas.style.opacity = String(heatmapOpacity(zoom))
+        return
+      }
+
+      const filtered = cat === 'all' ? c : c.filter((x) => x.category === cat)
+      if (!filtered.length) return
+
+      // ── Dynamic geographic radius (at display px), then scaled internally
+      const RADIUS = geoRadiusToPx(proj, bounds.getCenter())
+
+      // Canvas covers viewport + buffer on all four sides (display pixels)
       const left = Math.floor(Math.min(ne.x, sw.x)) - bufX - RADIUS
       const top  = Math.floor(Math.min(ne.y, sw.y)) - bufY - RADIUS
-      const w    = Math.ceil(vpW) + bufX * 2 + RADIUS * 2
-      const h    = Math.ceil(vpH) + bufY * 2 + RADIUS * 2
+      const dispW = Math.ceil(vpW) + bufX * 2 + RADIUS * 2
+      const dispH = Math.ceil(vpH) + bufY * 2 + RADIUS * 2
+
+      // Internal backing-store size (half res). All pixel work happens here.
+      const w = Math.max(1, Math.round(dispW * RENDER_SCALE))
+      const h = Math.max(1, Math.round(dispH * RENDER_SCALE))
+      const R = Math.max(MIN_RADIUS_PX * RENDER_SCALE, Math.round(RADIUS * RENDER_SCALE))
+
+      // Rebuild spot only when internal radius changes
+      if (spotCacheRef.current.radius !== R) {
+        spotCacheRef.current = { radius: R, canvas: buildSpot(R) }
+      }
+      const SPOT = spotCacheRef.current.canvas
 
       const canvas = this._canvas
-      canvas.style.left      = `${left}px`
-      canvas.style.top       = `${top}px`
-      canvas.style.transform = ''
-      canvas.style.opacity   = String(heatmapOpacity(map.getZoom() ?? 14))
+      canvas.style.left     = `${left}px`
+      canvas.style.top      = `${top}px`
+      canvas.style.width    = `${dispW}px`
+      canvas.style.height   = `${dispH}px`
+      canvas.style.opacity  = String(heatmapOpacity(zoom))
       canvas.width  = w
       canvas.height = h
 
-      // Store anchor for per-frame CSS transform during pan/zoom
-      anchorRef.current = {
-        latLng:    bounds.getNorthEast(),
-        swLatLng:  bounds.getSouthWest(),
-        px:        { x: ne.x, y: ne.y },
-        // NE corner position inside the canvas element (canvas-local coords)
-        // Used as transform-origin for the zoom scale so the image scales
-        // around the correct geographic point during zoom animation.
-        canvasNEX: ne.x - left,
-        canvasNEY: ne.y - top,
-        vpW,
-      }
+      anchorRef.current = { latLng: bounds.getNorthEast(), vpW }
 
-      // Phase 1: accumulate density
+      // Phase 1: accumulate density at half-res
       const density = document.createElement('canvas')
       density.width = w; density.height = h
       const dCtx = density.getContext('2d')
@@ -219,21 +248,31 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
       dCtx.fillRect(0, 0, w, h)
       dCtx.globalCompositeOperation = 'lighter'
 
-      for (const p of points) {
-        const px = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(p.lat, p.lng))
-        const x = px.x - left - RADIUS
-        const y = px.y - top  - RADIUS
-        dCtx.globalAlpha = Math.min(p.weight * 0.04, 1)
+      for (const p of filtered) {
+        const px = proj.fromLatLngToDivPixel(
+          new window.google.maps.LatLng(
+            parseFloat(p.location.latitude),
+            parseFloat(p.location.longitude)
+          )
+        )
+        const x = (px.x - left) * RENDER_SCALE - R
+        const y = (px.y - top)  * RENDER_SCALE - R
+        // Cull points whose spot can't touch the canvas at all
+        if (x + R * 2 < 0 || y + R * 2 < 0 || x > w || y > h) continue
+        dCtx.globalAlpha = Math.min((WEIGHTS[p.category] ?? 1.0) * 0.04, 1)
         dCtx.drawImage(SPOT, x, y)
       }
 
-      // Phase 2: apply colour ramp
+      // Phase 2: apply colour ramp. Fast-path skips transparent pixels,
+      // which on a sparse heatmap is 70-90% of the canvas.
       const raw = dCtx.getImageData(0, 0, w, h).data
       const out = new ImageData(w, h)
       const dst = out.data
-      for (let i = 0; i < raw.length; i += 4) {
-        const v   = raw[i]
-        const idx = v * 4
+      const N = raw.length
+      for (let i = 0; i < N; i += 4) {
+        const v = raw[i]
+        if (v === 0) continue            // leave dst transparent
+        const idx = v << 2               // v * 4
         dst[i]     = COLOR_RAMP[idx]
         dst[i + 1] = COLOR_RAMP[idx + 1]
         dst[i + 2] = COLOR_RAMP[idx + 2]
@@ -241,6 +280,8 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
       }
 
       canvas.getContext('2d').putImageData(out, 0, 0)
+
+      renderCacheRef.current = { zoom, cat, len: c.length }
     }
 
     overlay.onRemove = function () {
@@ -258,13 +299,21 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
     listenersRef.current.push(
       map.addListener('idle', () => {
         clearTimeout(idleTimerRef.current)
-        idleTimerRef.current = setTimeout(() => overlay.draw(), 120)
+        idleTimerRef.current = setTimeout(() => {
+          // rAF defers the actual pixel work by one frame so the gesture
+          // stack can unwind first. Without this, the heavy redraw fires
+          // synchronously on 'idle' and blocks the frame right after the
+          // user lifts their finger — exactly when they notice a stutter.
+          cancelAnimationFrame(rafRef.current)
+          rafRef.current = requestAnimationFrame(() => overlay.draw())
+        }, 120)
       })
     )
 
     return () => {
       clearTimeout(dataTimerRef.current)
       clearTimeout(idleTimerRef.current)
+      cancelAnimationFrame(rafRef.current)
       listenersRef.current.forEach((l) => window.google.maps.event.removeListener(l))
       listenersRef.current = []
       overlay.setMap(null)
@@ -295,6 +344,9 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
   // ── Update data ref + schedule debounced redraw on data changes ─────────
   useEffect(() => {
     dataRef.current = { crimes, category }
+    // Data changed → invalidate the fast-path cache so the next draw
+    // actually re-renders pixels instead of just repositioning.
+    renderCacheRef.current = { zoom: -1, cat: '', len: -1 }
     clearTimeout(dataTimerRef.current)
     dataTimerRef.current = setTimeout(() => {
       overlayRef.current?.draw()
