@@ -142,7 +142,14 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
   // zoom, same crimes, same category) we can skip the 2-phase render and
   // just reposition the canvas via CSS left/top — the single biggest win,
   // since pure-pan is the most common interaction.
-  const renderCacheRef = useRef({ zoom: -1, cat: '', len: -1 })
+  // Remembers the exact projection state of the last pixel render so a
+  // pan-only "fast path" can re-anchor by applying the pane-pixel delta,
+  // sidestepping every derivation that could drift (radius, buffer, rounding).
+  const renderCacheRef = useRef({
+    zoom: -1, cat: '', len: -1,
+    neX: 0, neY: 0,
+    left: 0, top: 0,
+  })
   const rafRef         = useRef(null)
 
   // ── Create overlay once when the map is available ──────────────────────
@@ -183,26 +190,27 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
       const bufY = Math.ceil(vpH * PAN_BUFFER)
 
       // ── Fast path: zoom/data/category unchanged → reposition only ────────
-      // A pan at fixed zoom over the same crime set produces an identical
-      // density image; the old pixels are still valid. Just re-anchor the
-      // element and return. Skips projection-per-point, Gaussian compositing,
-      // and the color-ramp pixel loop entirely.
+      // The cached pixel content is still geographically correct; all we
+      // need is to shift the element by however much pane-pixel space has
+      // moved since the last real render. Using a delta (not a re-derived
+      // left/top) guarantees we never drift by a buffer- or radius-rounding
+      // mismatch — the content line up with the map to the pixel.
       if (
         cache.zoom === zoom &&
         cache.cat  === cat  &&
         cache.len  === c.length &&
         this._canvas.width > 0
       ) {
-        const RADIUS = spotCacheRef.current.radius
-        const left   = Math.floor(Math.min(ne.x, sw.x)) - bufX - RADIUS
-        const top    = Math.floor(Math.min(ne.y, sw.y)) - bufY - RADIUS
-        // Cached pixels were drawn against an earlier (left, top). Shift the
-        // element by the delta so the pixel content stays geographically
-        // aligned. Since pane pixel space translates uniformly during pan,
-        // a single CSS translate suffices.
-        this._canvas.style.left = `${left}px`
-        this._canvas.style.top  = `${top}px`
+        const dx = ne.x - cache.neX
+        const dy = ne.y - cache.neY
+        const newLeft = cache.left + dx
+        const newTop  = cache.top  + dy
+        this._canvas.style.left    = `${newLeft}px`
+        this._canvas.style.top     = `${newTop}px`
         this._canvas.style.opacity = String(heatmapOpacity(zoom))
+        // Update anchor so successive pans compose correctly.
+        cache.neX = ne.x; cache.neY = ne.y
+        cache.left = newLeft; cache.top = newTop
         return
       }
 
@@ -281,7 +289,15 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
 
       canvas.getContext('2d').putImageData(out, 0, 0)
 
-      renderCacheRef.current = { zoom, cat, len: c.length }
+      // Record the exact projection state used to bake these pixels.
+      // Future pan-only fast-path re-anchors will be computed as deltas
+      // against this reference, so the result is drift-free regardless of
+      // how radius or buffer were rounded on this draw.
+      renderCacheRef.current = {
+        zoom, cat, len: c.length,
+        neX: ne.x, neY: ne.y,
+        left, top,
+      }
     }
 
     overlay.onRemove = function () {
@@ -346,7 +362,10 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
     dataRef.current = { crimes, category }
     // Data changed → invalidate the fast-path cache so the next draw
     // actually re-renders pixels instead of just repositioning.
-    renderCacheRef.current = { zoom: -1, cat: '', len: -1 }
+    renderCacheRef.current = {
+      zoom: -1, cat: '', len: -1,
+      neX: 0, neY: 0, left: 0, top: 0,
+    }
     clearTimeout(dataTimerRef.current)
     dataTimerRef.current = setTimeout(() => {
       overlayRef.current?.draw()
