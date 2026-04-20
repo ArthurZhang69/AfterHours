@@ -135,7 +135,12 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
 
     overlay.onAdd = function () {
       const canvas = document.createElement('canvas')
-      canvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;'
+      // will-change pins the canvas onto its own compositor layer so the
+      // RAF translate/scale during pan and zoom stays on the GPU and doesn't
+      // trigger layout or full-layer repaints.
+      canvas.style.cssText =
+        'position:absolute;top:0;left:0;pointer-events:none;' +
+        'will-change:transform;transform:translateZ(0);'
       this._canvas = canvas
       this.getPanes().overlayLayer.appendChild(canvas)
     }

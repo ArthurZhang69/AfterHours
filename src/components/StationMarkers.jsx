@@ -1,4 +1,6 @@
-import { AdvancedMarker } from '@vis.gl/react-google-maps'
+import { AdvancedMarker, useMap } from '@vis.gl/react-google-maps'
+import { useMemo } from 'react'
+import { useMapInteracting } from '../hooks/useMapInteracting'
 
 // TfL official line colours (lightened for dark-map legibility)
 const LINE_COLORS = {
@@ -55,7 +57,7 @@ function Roundel({ color }) {
       width={size}
       height={size}
       viewBox={`0 0 ${size} ${size}`}
-      style={{ cursor: 'pointer', display: 'block', filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.7))' }}
+      style={{ cursor: 'pointer', display: 'block' }}
     >
       {/* Dark fill inside the ring so the map doesn't bleed through */}
       <circle cx={cx} cy={cy} r={r - stroke / 2} fill="rgba(8,9,18,0.75)" />
@@ -89,9 +91,27 @@ function Roundel({ color }) {
  * the circular crime-hotspot badges.
  */
 export default function StationMarkers({ stations, onSelect }) {
-  if (!stations?.length) return null
+  const map         = useMap()
+  const interacting = useMapInteracting()
 
-  return stations.map((station) => {
+  // Render only stations currently in the viewport, capped to 60. Otherwise
+  // all-London data produces hundreds of AdvancedMarkers — each an absolute
+  // div that Google repositions every frame.
+  const visible = useMemo(() => {
+    if (!stations?.length || !map) return []
+    const bounds = map.getBounds()
+    if (!bounds) return stations.slice(0, 60)
+    const ne = bounds.getNorthEast(), sw = bounds.getSouthWest()
+    const n = ne.lat(), s = sw.lat(), e = ne.lng(), w = sw.lng()
+    return stations
+      .filter((st) => st.lat >= s && st.lat <= n && st.lon >= w && st.lon <= e)
+      .slice(0, 60)
+  }, [stations, map, interacting])   // interacting re-triggers on idle → viewport refresh
+
+  if (interacting) return null
+  if (!visible.length) return null
+
+  return visible.map((station) => {
     const color = getLineColor(station)
     const label = station.commonName
       ?.replace(/ Underground Station$/i, '')

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { AdvancedMarker, useMap } from '@vis.gl/react-google-maps'
 import { CRIME_COLORS } from '../constants/mapStyles'
+import { useMapInteracting } from '../hooks/useMapInteracting'
 
 /**
  * Zoom-aware crime hotspot markers.
@@ -169,6 +170,7 @@ function PinMarker({ cluster, accent, label, minW, onSelect }) {
 export default function CrimeHotspots({ clusters, onSelect, is3D = false }) {
   const map = useMap()
   const [zoom, setZoom] = useState(14)
+  const interacting = useMapInteracting()
 
   useEffect(() => {
     if (!map) return
@@ -188,6 +190,9 @@ export default function CrimeHotspots({ clusters, onSelect, is3D = false }) {
       .slice(0, 40)
   }, [clusters, zoom])
 
+  // Drop every marker from the DOM during pan/zoom — the real FPS killer on
+  // iOS Safari. Heatmap continues to render; labels return on idle.
+  if (interacting) return null
   if (!visible.length) return null
 
   return visible.map((cluster) => {
