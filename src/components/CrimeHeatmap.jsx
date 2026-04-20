@@ -18,15 +18,15 @@ const WEIGHTS = {
  * At zoom 14 this is ~18 px; at zoom 17 it is ~140 px (crimes blend properly).
  * Clamped so the canvas never becomes impractically large at extreme zooms.
  */
-const GEO_RADIUS_M = 220   // metres — controls the "spread" of each crime
-const MIN_RADIUS_PX = 10   // never smaller (prevents invisible dots)
-const MAX_RADIUS_PX = 100  // never larger  (prevents huge canvas blowup)
+const GEO_RADIUS_M = 140   // metres — controls the "spread" of each crime
+const MIN_RADIUS_PX = 8    // never smaller (prevents invisible dots)
+const MAX_RADIUS_PX = 70   // never larger  (prevents huge canvas blowup)
 
 /**
- * Canvas is drawn PAN_BUFFER × viewport larger on each side so panning
- * up to 25% of the viewport doesn't expose uncovered edges.
+ * Canvas is drawn PAN_BUFFER × viewport larger on each side so pan and
+ * one zoom-out step don't expose uncovered edges before the next idle redraw.
  */
-const PAN_BUFFER = 0.25
+const PAN_BUFFER = 0.5
 
 function buildColorRamp() {
   const c = document.createElement('canvas')
@@ -243,16 +243,14 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
     overlayRef.current = overlay
 
     // ── Smooth canvas tracking during active pan AND zoom ────────────────
-    // Every animation frame:
-    //   1. Translate: follow the NE anchor point as the map pans
-    //   2. Scale:     match the map's zoom ratio so the heatmap shrinks/grows
-    //      in lockstep with the underlying tiles — no jump on idle redraw
-    //
-    // transform-origin is set to the NE corner in canvas-local coordinates so
-    // the scale pivot matches the geographic anchor, keeping the heatmap
-    // geographically registered during the entire zoom gesture.
-    listenersRef.current.push(
-      map.addListener('bounds_changed', () => {
+    // `bounds_changed` fires on every frame of a drag — RAF-throttle so we
+    // do at most one transform recompute per paint, avoiding layout thrash
+    // that visibly drops the map frame rate on lower-end hardware.
+    let rafId = 0
+    const onBoundsChanged = () => {
+      if (rafId) return
+      rafId = requestAnimationFrame(() => {
+        rafId = 0
         const proj   = overlay.getProjection()
         const canvas = overlay._canvas
         const anchor = anchorRef.current
@@ -267,19 +265,21 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
         const dy = curNE.y - anchor.px.y
 
         canvas.style.transformOrigin = `${anchor.canvasNEX}px ${anchor.canvasNEY}px`
-        canvas.style.transform = `translate(${dx}px,${dy}px) scale(${scale})`
+        canvas.style.transform = `translate3d(${dx}px,${dy}px,0) scale(${scale})`
       })
-    )
+    }
+    listenersRef.current.push(map.addListener('bounds_changed', onBoundsChanged))
 
     // ── Full redraw after map settles ─────────────────────────────────────
     listenersRef.current.push(
       map.addListener('idle', () => {
         clearTimeout(idleTimerRef.current)
-        idleTimerRef.current = setTimeout(() => overlay.draw(), 150)
+        idleTimerRef.current = setTimeout(() => overlay.draw(), 40)
       })
     )
 
     return () => {
+      if (rafId) cancelAnimationFrame(rafId)
       clearTimeout(dataTimerRef.current)
       clearTimeout(idleTimerRef.current)
       listenersRef.current.forEach((l) => window.google.maps.event.removeListener(l))

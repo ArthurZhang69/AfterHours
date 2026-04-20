@@ -76,7 +76,7 @@ function FlatMarker({ cluster, accent, label, minW, onSelect }) {
         height:         24,
         padding:        '0 7px',
         borderRadius:   12,
-        background:     'rgba(8,9,18,0.88)',
+        background:     'rgba(8,9,18,0.92)',
         border:         `1.5px solid ${accent}`,
         color:          '#ffffff',
         fontSize:       11,
@@ -86,18 +86,8 @@ function FlatMarker({ cluster, accent, label, minW, onSelect }) {
         textAlign:      'center',
         cursor:         'pointer',
         userSelect:     'none',
-        backdropFilter: 'blur(4px)',
         boxShadow:      '0 1px 4px rgba(0,0,0,0.5)',
-        transition:     'transform 0.15s ease, box-shadow 0.15s ease',
         whiteSpace:     'nowrap',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'scale(1.15)'
-        e.currentTarget.style.boxShadow = `0 2px 8px ${accent}66`
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'scale(1)'
-        e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.5)'
       }}
     >
       {label}
@@ -125,14 +115,6 @@ function PinMarker({ cluster, accent, label, minW, onSelect }) {
         // Offset so the ground dot (not the badge) sits at the marker anchor
         // transformOrigin must match: anchor is bottom-center
       }}
-      onMouseEnter={(e) => {
-        e.currentTarget.querySelector('.pin-badge').style.transform = 'scale(1.15)'
-        e.currentTarget.querySelector('.pin-badge').style.boxShadow = `0 4px 14px ${accent}88`
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.querySelector('.pin-badge').style.transform = 'scale(1)'
-        e.currentTarget.querySelector('.pin-badge').style.boxShadow = `0 2px 8px ${accent}55`
-      }}
     >
       {/* ── Floating badge ── */}
       <div
@@ -142,7 +124,7 @@ function PinMarker({ cluster, accent, label, minW, onSelect }) {
           height:         24,
           padding:        '0 7px',
           borderRadius:   12,
-          background:     'rgba(8,9,18,0.92)',
+          background:     'rgba(8,9,18,0.94)',
           border:         `1.5px solid ${accent}`,
           color:          '#ffffff',
           fontSize:       11,
@@ -151,11 +133,7 @@ function PinMarker({ cluster, accent, label, minW, onSelect }) {
           lineHeight:     '22px',
           textAlign:      'center',
           whiteSpace:     'nowrap',
-          backdropFilter: 'blur(6px)',
           boxShadow:      `0 2px 8px ${accent}55, 0 0 0 1px rgba(255,255,255,0.04) inset`,
-          transition:     'transform 0.15s ease, box-shadow 0.15s ease',
-          // Subtle bottom glow to reinforce floating
-          filter:         `drop-shadow(0 4px 6px ${accent}44)`,
         }}
       >
         {label}
@@ -207,7 +185,7 @@ export default function CrimeHotspots({ clusters, onSelect, is3D = false }) {
     const merged   = mergeClusters(filtered, zoom)
     return merged
       .sort((a, b) => b.score - a.score)
-      .slice(0, 60)
+      .slice(0, 40)
   }, [clusters, zoom])
 
   if (!visible.length) return null
