@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useMap } from '@vis.gl/react-google-maps'
+import { useMapInteracting } from '../hooks/useMapInteracting'
 
 const WEIGHTS = {
   'violent-crime':          3.0,
@@ -23,10 +24,11 @@ const MIN_RADIUS_PX = 8    // never smaller (prevents invisible dots)
 const MAX_RADIUS_PX = 70   // never larger  (prevents huge canvas blowup)
 
 /**
- * Canvas is drawn PAN_BUFFER × viewport larger on each side so pan and
- * one zoom-out step don't expose uncovered edges before the next idle redraw.
+ * Small padding around the viewport — the canvas is hidden during active
+ * pan/zoom, so we no longer need to overshoot to cover motion. Just enough
+ * buffer to hide the edge of the fade-in if Maps' idle event lags slightly.
  */
-const PAN_BUFFER = 0.5
+const PAN_BUFFER = 0.1
 
 function buildColorRamp() {
   const c = document.createElement('canvas')
@@ -117,6 +119,7 @@ function heatmapOpacity(zoom) {
  */
 export default function CrimeHeatmap({ crimes, category = 'all' }) {
   const map          = useMap()
+  const interacting  = useMapInteracting()
   const overlayRef   = useRef(null)
   const listenersRef = useRef([])
   const dataRef      = useRef({ crimes, category })
@@ -247,44 +250,19 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
     overlay.setMap(map)
     overlayRef.current = overlay
 
-    // ── Smooth canvas tracking during active pan AND zoom ────────────────
-    // `bounds_changed` fires on every frame of a drag — RAF-throttle so we
-    // do at most one transform recompute per paint, avoiding layout thrash
-    // that visibly drops the map frame rate on lower-end hardware.
-    let rafId = 0
-    const onBoundsChanged = () => {
-      if (rafId) return
-      rafId = requestAnimationFrame(() => {
-        rafId = 0
-        const proj   = overlay.getProjection()
-        const canvas = overlay._canvas
-        const anchor = anchorRef.current
-        if (!proj || !canvas || !anchor) return
-
-        const curNE = proj.fromLatLngToDivPixel(anchor.latLng)
-        const curSW = proj.fromLatLngToDivPixel(anchor.swLatLng)
-        const newVpW = Math.abs(curNE.x - curSW.x)
-        const scale  = newVpW / anchor.vpW
-
-        const dx = curNE.x - anchor.px.x
-        const dy = curNE.y - anchor.px.y
-
-        canvas.style.transformOrigin = `${anchor.canvasNEX}px ${anchor.canvasNEY}px`
-        canvas.style.transform = `translate3d(${dx}px,${dy}px,0) scale(${scale})`
-      })
-    }
-    listenersRef.current.push(map.addListener('bounds_changed', onBoundsChanged))
-
     // ── Full redraw after map settles ─────────────────────────────────────
+    // No RAF pan/zoom tracking: canvas is hidden during interaction (see the
+    // second effect below) and simply redrawn in place on idle. That removes
+    // per-frame projection calls + layer re-compositing — the two things that
+    // most visibly drop iOS Safari below 60 fps on a complex custom overlay.
     listenersRef.current.push(
       map.addListener('idle', () => {
         clearTimeout(idleTimerRef.current)
-        idleTimerRef.current = setTimeout(() => overlay.draw(), 40)
+        idleTimerRef.current = setTimeout(() => overlay.draw(), 120)
       })
     )
 
     return () => {
-      if (rafId) cancelAnimationFrame(rafId)
       clearTimeout(dataTimerRef.current)
       clearTimeout(idleTimerRef.current)
       listenersRef.current.forEach((l) => window.google.maps.event.removeListener(l))
@@ -294,6 +272,23 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
       anchorRef.current  = null
     }
   }, [map])
+
+  // ── Freeze/restore canvas visibility during interaction ─────────────────
+  // While the user drags or zooms the map, we hide the heatmap canvas entirely
+  // so Google Maps' vector renderer is the only thing doing per-frame work.
+  // This is the single biggest iOS Safari FPS win: no custom layer = 60 fps.
+  useEffect(() => {
+    const canvas = overlayRef.current?._canvas
+    if (!canvas) return
+    if (interacting) {
+      canvas.style.opacity    = '0'
+      canvas.style.transition = ''
+    } else {
+      const z = map?.getZoom() ?? 14
+      canvas.style.transition = 'opacity 180ms ease-out'
+      canvas.style.opacity    = String(heatmapOpacity(z))
+    }
+  }, [interacting, map])
 
   // ── Update data ref + schedule debounced redraw on data changes ─────────
   useEffect(() => {
