@@ -274,17 +274,19 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
   }, [map])
 
   // ── Freeze/restore canvas visibility during interaction ─────────────────
-  // While the user drags or zooms the map, we hide the heatmap canvas entirely
-  // so Google Maps' vector renderer is the only thing doing per-frame work.
-  // This is the single biggest iOS Safari FPS win: no custom layer = 60 fps.
+  // Use `display: none` (not opacity 0): opacity:0 still holds a compositor
+  // layer on iOS Safari which must be transformed frame-by-frame as the map
+  // pans. display:none detaches the layer entirely so the compositor has
+  // strictly less work — the GPU can dedicate itself to the vector tiles.
   useEffect(() => {
     const canvas = overlayRef.current?._canvas
     if (!canvas) return
     if (interacting) {
-      canvas.style.opacity    = '0'
+      canvas.style.display    = 'none'
       canvas.style.transition = ''
     } else {
       const z = map?.getZoom() ?? 14
+      canvas.style.display    = 'block'
       canvas.style.transition = 'opacity 180ms ease-out'
       canvas.style.opacity    = String(heatmapOpacity(z))
     }

@@ -32,6 +32,10 @@ const MAP_OPTIONS = {
   clickableIcons:    false,
   keyboardShortcuts: false,
   colorScheme:       'DARK',
+  // Snap zoom to integer levels. Fractional zoom is gorgeous on desktop
+  // but forces the vector renderer to re-rasterise tiles on every pinch
+  // frame — a measurable FPS drop on iOS Safari.
+  isFractionalZoomEnabled: false,
 }
 
 /**
