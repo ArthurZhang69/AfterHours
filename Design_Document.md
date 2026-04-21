@@ -71,17 +71,17 @@ The continuous λ(p) surface is approximated by two discretisations tuned for br
 
 ### v0.1 — Scaffold
 
-The first commit established the component architecture: `MapContainer`, `CrimeHeatmap`, `BottomSheet`, `RoutePanel`, `AreaCard`, `StationMarkers`, and custom hooks (`useCrimeData`, `useLondonCrimes`, `useNearbyStations`, `useLondonStations`, `useGeolocation`). Data fetching was routed through a Vite dev-server proxy to avoid CORS issues locally. The weighted risk model in `risk.js` was fixed early so that every later iteration could reason about a stable scoring contract.
+The first commit established the component architecture: MapContainer, CrimeHeatmap, BottomSheet, RoutePanel, AreaCard, StationMarkers, and custom hooks (useCrimeData, useLondonCrimes, useNearbyStations, useLondonStations, useGeolocation). Data fetching was routed through a Vite dev-server proxy to avoid CORS issues locally. The weighted risk model in risk.js was fixed early so that every later iteration could reason about a stable scoring contract.
 
 ### v0.2 — Production deployment
 
 Moving to GitHub Pages exposed a structural problem: the dev-server proxy does not exist in production. The fix was environment-aware API base URLs:
 
-```js
+
 const POLICE_BASE = import.meta.env.PROD
   ? 'https://data.police.uk/api'
   : '/api/police'
-```
+
 
 Both `data.police.uk` and `api.tfl.gov.uk` support CORS natively, so direct browser requests work in production without a backend proxy — an important constraint given static hosting.
 
