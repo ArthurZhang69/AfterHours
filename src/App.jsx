@@ -192,7 +192,7 @@ export default function App() {
             destination={destination ?? DEMO_ORIGIN}
             userLocation={location}
             onOriginChange={(place) => setCustomOrigin(place ? { ...place.location, name: place.name } : null)}
-            crimes={localCrimes}
+            crimes={londonCrimes}
             routePathA={routePaths.A}
             routePathB={routePaths.B}
             metaA={routeMeta.A}
