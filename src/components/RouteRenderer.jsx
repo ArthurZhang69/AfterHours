@@ -137,6 +137,33 @@ export default function RouteRenderer({ origin, destination, activeRoute = 'A', 
     return () => { cancelled = true; setRoutes(null) }
   }, [map, routesLib, origin?.lat, origin?.lng, destination?.lat, destination?.lng])
 
+  // Auto-fit the viewport to both alternatives as soon as they arrive,
+  // so the user sees the whole walk at a glance instead of still being
+  // zoomed into the origin neighbourhood. Re-runs only when the route
+  // data itself changes — not on every activeRoute toggle.
+  useEffect(() => {
+    if (!map || !routes || routes === 'DEMO') return
+    const bounds = new window.google.maps.LatLngBounds()
+    let hasPoints = false
+    for (const r of routes) {
+      for (const p of r.path ?? []) {
+        bounds.extend(p)
+        hasPoints = true
+      }
+    }
+    if (!hasPoints) return
+    // Padding keeps the polyline clear of the search bar at the top
+    // and the bottom sheet at the bottom (which covers ~46% of the
+    // viewport in its default HALF snap).
+    const vh = window.innerHeight || 800
+    map.fitBounds(bounds, {
+      top:    120,
+      right:  40,
+      bottom: Math.round(vh * 0.48),
+      left:   40,
+    })
+  }, [map, routes])
+
   // ── Draw polylines ────────────────────────────────────────────────────────
   useEffect(() => {
     linesRef.current.forEach((l) => l.setMap(null))

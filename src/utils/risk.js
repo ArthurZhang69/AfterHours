@@ -188,17 +188,23 @@ export function filterCrimesByRadius(crimes, center, radiusKm = 0.5) {
 // where r(e) ∈ [0, 1] is a per-segment risk derived from the local KDE
 // density at the segment midpoint, mapped through r = 1 − exp(−λ / s).
 
-const SEGMENT_BANDWIDTH_KM    = 0.25  // h — 250 m corridor kernel
+// Bandwidth controls how far a crime "reaches" into the corridor
+// score. The old 250 m kernel was too generous — any two alternative
+// walking routes in central London run within 200-400 m of each
+// other, so a 250 m radius lumped the same crime cluster into both
+// scores and the numbers ended up nearly identical (seen on demo
+// routes: 50 vs 41). 100 m keeps the kernel tight against the actual
+// polyline, so "going one block over" now shifts the score visibly.
+const SEGMENT_BANDWIDTH_KM    = 0.10  // h — 100 m corridor kernel
 const DEFAULT_MAX_SEGMENTS    = 30    // downsample polylines to keep scoring fast
 // Length-weighted Poisson formulation of Galbrun's r(e):
 //   r(e) = 1 − exp(−μ(e) · L(e))  where μ(e) ∝ local KDE density
 //   r_t  = 1 − Π(1−r(e)) = 1 − exp(−Σ μ(e)·L(e))
-// This makes total exposure scale with route length (not with segment count)
-// and prevents saturation on dense-city routes where fixed 20-segment
-// products always collapse to ~1.
-const TOTAL_SATURATION        = 2500  // (weighted-density × km); calibrated so a
-                                      //   1.5 km central-London route ≈ 60
-const PEAK_SATURATION         = 400   // raw-density scale for the warning metric
+// Tightening bandwidth shrinks raw densities roughly (0.10/0.25)^2 ≈
+// 0.16×, so the saturation constant has been rescaled to keep a
+// typical central-London 1.5 km route landing in the 50-65 band.
+const TOTAL_SATURATION        = 400   // (weighted-density × km)
+const PEAK_SATURATION         = 60    // raw-density scale for the warning metric
 
 const expSat = (x, scale) => 1 - Math.exp(-x / scale)
 
