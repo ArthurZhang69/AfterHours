@@ -145,23 +145,22 @@ function measure(step, viewportW, viewportH) {
 }
 
 export default function Onboarding({ ready = true }) {
+  // eslint-disable-next-line no-unused-vars
+  const _ready = ready   // kept in the signature for backward compat
   const [visible, setVisible] = useState(false)
   const [step,    setStep]    = useState(0)
   const [leaving, setLeaving] = useState(false)
   const [geom,    setGeom]    = useState(null)
 
-  // Trigger once the app is interactive (splash gone). Runs every
-  // time — Skip is the opt-out, not a persistent localStorage flag.
-  //
-  // Hard fallback at 5 s: if London crime data hasn't loaded (slow
-  // connection, rate limit, data.police.uk outage) `ready` will never
-  // flip, but the user is already looking at a functional map — we
-  // should still run the tour rather than stall forever.
+  // Tour auto-triggers 900ms after mount — short enough to feel like
+  // a welcome, long enough for search bar / tilt button / bottom sheet
+  // to have final layout so getBoundingClientRect has something to
+  // measure. No splashGone gate: an earlier version waited on the
+  // London data feed and never fired if the feed was slow.
   useEffect(() => {
-    if (ready) { setVisible(true); return }
-    const id = setTimeout(() => setVisible(true), 5000)
+    const id = setTimeout(() => setVisible(true), 900)
     return () => clearTimeout(id)
-  }, [ready])
+  }, [])
 
   // Re-measure target on step change, resize, and orientation change.
   // Re-uses useLayoutEffect so the tooltip jumps into place in the same
@@ -204,7 +203,20 @@ export default function Onboarding({ ready = true }) {
     setStep((s) => Math.max(0, s - 1))
   }, [])
 
-  if (!visible || !geom) return null
+  // Always-visible "?" button — reopens the tour on demand and also
+  // serves as an on-device smoke test that this build actually loaded.
+  const helpButton = (
+    <button
+      className="coach-help"
+      onClick={() => { setStep(0); setVisible(true) }}
+      aria-label="Replay tour"
+      title="Replay tour"
+    >
+      ?
+    </button>
+  )
+
+  if (!visible || !geom) return helpButton
 
   const s = STEPS[step]
   const { hole, tooltip } = geom

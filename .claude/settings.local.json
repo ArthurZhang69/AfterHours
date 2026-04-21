@@ -52,7 +52,8 @@
       "Bash(ls -la .tmp_docx*)",
       "Bash(gh run *)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"https://arthurzhang69.github.io/AfterHours/\")",
-      "Bash(curl -s \"https://arthurzhang69.github.io/AfterHours/\")"
+      "Bash(curl -s \"https://arthurzhang69.github.io/AfterHours/\")",
+      "Bash(curl -s \"https://arthurzhang69.github.io/AfterHours/assets/index-03MEX4s7.js\")"
     ]
   }
 }
