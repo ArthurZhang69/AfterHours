@@ -1,6 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useMap } from '@vis.gl/react-google-maps'
-import { useMapInteracting } from '../hooks/useMapInteracting'
 
 const WEIGHTS = {
   'violent-crime':          3.0,
@@ -31,6 +30,53 @@ const MAX_RADIUS_PX = 50   // never larger  (prevents huge canvas blowup)
  * the single biggest CPU cost of a full redraw on iOS Safari.
  */
 const RENDER_SCALE = 0.5
+
+/**
+ * Side length of a spatial-aggregation cell, in metres. Crimes within the
+ * same cell are merged into a single weighted "super-point" before the
+ * heatmap is drawn. Since the KDE kernel is already 85m wide, merging at
+ * ≤ ~60m doesn't visibly blockify the output — but it collapses the
+ * thousands of per-point projections and Gaussian composites on every
+ * redraw into a few hundred, which is the second-largest CPU cost after
+ * the color-ramp loop.
+ */
+const GRID_CELL_M = 55
+
+/**
+ * Bucket crimes into GRID_CELL_M squares and sum their weights.
+ * Called once per (crimes, category) change; result is reused for every
+ * redraw (pan, zoom, visibility-restore, etc.).
+ */
+function aggregateCrimes(crimes, category) {
+  // Degrees per cell at ~51.5°N. Spherical error at London scale is < 1%,
+  // which is well inside the kernel blur — no need for a proper projection.
+  const latDeg = GRID_CELL_M / 111320
+  const lngDeg = GRID_CELL_M / 69300
+  const buckets = new Map()
+  for (const c of crimes) {
+    if (category !== 'all' && c.category !== category) continue
+    const lat = parseFloat(c.location.latitude)
+    const lng = parseFloat(c.location.longitude)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
+    const w = WEIGHTS[c.category] ?? 1.0
+    const gx = Math.floor(lng / lngDeg)
+    const gy = Math.floor(lat / latDeg)
+    const key = `${gx},${gy}`
+    const b = buckets.get(key)
+    if (b) {
+      b.w += w; b.n += 1
+      b.latSum += lat; b.lngSum += lng
+    } else {
+      buckets.set(key, { w, n: 1, latSum: lat, lngSum: lng })
+    }
+  }
+  const out = new Array(buckets.size)
+  let i = 0
+  for (const b of buckets.values()) {
+    out[i++] = { lat: b.latSum / b.n, lng: b.lngSum / b.n, weight: b.w }
+  }
+  return out
+}
 
 /**
  * Small padding around the viewport — the canvas is hidden during active
@@ -128,10 +174,15 @@ function heatmapOpacity(zoom) {
  */
 export default function CrimeHeatmap({ crimes, category = 'all' }) {
   const map          = useMap()
-  const interacting  = useMapInteracting()
   const overlayRef   = useRef(null)
   const listenersRef = useRef([])
-  const dataRef      = useRef({ crimes, category })
+  // Pre-aggregated super-points fed into every redraw. Recomputed only
+  // when crimes or the selected category change — not on every pan/zoom.
+  const aggregated   = useMemo(
+    () => aggregateCrimes(crimes ?? [], category),
+    [crimes, category],
+  )
+  const dataRef      = useRef({ aggregated })
   const dataTimerRef = useRef(null)
   const idleTimerRef = useRef(null)
   const anchorRef    = useRef(null)   // { latLng, px: {x, y} }
@@ -164,8 +215,8 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
       const bounds = map.getBounds()
       if (!bounds) return
 
-      const { crimes: c, category: cat } = dataRef.current
-      if (!c?.length) return
+      const { aggregated: points } = dataRef.current
+      if (!points?.length) return
 
       const zoom = map.getZoom() ?? 14
 
@@ -182,9 +233,6 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
       // gestures, so deltas don't reliably describe the transform. The
       // heatmap drifted off its real crime positions, which is strictly
       // worse than a performance dip. Always fully re-render.
-
-      const filtered = cat === 'all' ? c : c.filter((x) => x.category === cat)
-      if (!filtered.length) return
 
       // ── Dynamic geographic radius (at display px), then scaled internally
       const RADIUS = geoRadiusToPx(proj, bounds.getCenter())
@@ -225,18 +273,14 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
       dCtx.fillRect(0, 0, w, h)
       dCtx.globalCompositeOperation = 'lighter'
 
-      for (const p of filtered) {
-        const px = proj.fromLatLngToDivPixel(
-          new window.google.maps.LatLng(
-            parseFloat(p.location.latitude),
-            parseFloat(p.location.longitude)
-          )
-        )
+      const LatLng = window.google.maps.LatLng
+      for (const p of points) {
+        const px = proj.fromLatLngToDivPixel(new LatLng(p.lat, p.lng))
         const x = (px.x - left) * RENDER_SCALE - R
         const y = (px.y - top)  * RENDER_SCALE - R
         // Cull points whose spot can't touch the canvas at all
         if (x + R * 2 < 0 || y + R * 2 < 0 || x > w || y > h) continue
-        dCtx.globalAlpha = Math.min((WEIGHTS[p.category] ?? 1.0) * 0.04, 1)
+        dCtx.globalAlpha = Math.min(p.weight * 0.04, 1)
         dCtx.drawImage(SPOT, x, y)
       }
 
@@ -297,34 +341,20 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
     }
   }, [map])
 
-  // ── Freeze/restore canvas visibility during interaction ─────────────────
-  // Use `display: none` (not opacity 0): opacity:0 still holds a compositor
-  // layer on iOS Safari which must be transformed frame-by-frame as the map
-  // pans. display:none detaches the layer entirely so the compositor has
-  // strictly less work — the GPU can dedicate itself to the vector tiles.
-  useEffect(() => {
-    const canvas = overlayRef.current?._canvas
-    if (!canvas) return
-    if (interacting) {
-      canvas.style.display    = 'none'
-      canvas.style.transition = ''
-    } else {
-      const z = map?.getZoom() ?? 14
-      canvas.style.display    = 'block'
-      canvas.style.transition = 'opacity 180ms ease-out'
-      canvas.style.opacity    = String(heatmapOpacity(z))
-    }
-  }, [interacting, map])
+  // Canvas stays visible continuously. Google Maps' overlayLayer pane
+  // translates with the map during pan, so an absolutely-positioned canvas
+  // inside it stays geographically aligned for free — no per-frame JS work
+  // needed to keep the heatmap glued to the real crime positions.
 
   // ── Update data ref + schedule debounced redraw on data changes ─────────
   useEffect(() => {
-    dataRef.current = { crimes, category }
+    dataRef.current = { aggregated }
     clearTimeout(dataTimerRef.current)
     dataTimerRef.current = setTimeout(() => {
       overlayRef.current?.draw()
     }, 900)
     return () => clearTimeout(dataTimerRef.current)
-  }, [crimes, category])
+  }, [aggregated])
 
   return null
 }
