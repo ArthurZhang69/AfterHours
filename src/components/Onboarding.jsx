@@ -9,11 +9,13 @@ import { useState, useEffect, useCallback, useLayoutEffect } from 'react'
  * handle — with a small tooltip anchored beside it. The user sees
  * exactly where to tap next.
  *
- * Dismissal is persisted in localStorage (afterhours.onboarded.v1).
- * Append ?tour=1 to the URL to force-retrigger the flow.
+ * The tour runs every time the app opens — it's short and the user
+ * can Skip out of any step. Rationale: for an app someone only uses
+ * occasionally (after-hours walks home), a single "once ever" tour
+ * is forgotten by the second visit. A five-second recap keeps the
+ * feature set fresh without being annoying, and Skip is always one
+ * tap away.
  */
-
-const STORAGE_KEY = 'afterhours.onboarded.v1'
 
 /**
  * - target: CSS selector of the element to highlight. null → centred
@@ -148,12 +150,11 @@ export default function Onboarding({ ready = true }) {
   const [leaving, setLeaving] = useState(false)
   const [geom,    setGeom]    = useState(null)
 
-  // Trigger only once the app is interactive (splash gone).
+  // Trigger once the app is interactive (splash gone). Runs every
+  // time — Skip is the opt-out, not a persistent localStorage flag.
   useEffect(() => {
     if (!ready) return
-    const forced = new URLSearchParams(window.location.search).get('tour') === '1'
-    const seen   = window.localStorage.getItem(STORAGE_KEY) === '1'
-    if (forced || !seen) setVisible(true)
+    setVisible(true)
   }, [ready])
 
   // Re-measure target on step change, resize, and orientation change.
@@ -184,7 +185,6 @@ export default function Onboarding({ ready = true }) {
   }, [visible, step])
 
   const dismiss = useCallback(() => {
-    try { window.localStorage.setItem(STORAGE_KEY, '1') } catch { /* private mode */ }
     setLeaving(true)
     setTimeout(() => { setVisible(false); setLeaving(false); setStep(0) }, 240)
   }, [])
