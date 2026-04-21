@@ -220,26 +220,48 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
 
       const zoom = map.getZoom() ?? 14
 
-      const ne = proj.fromLatLngToDivPixel(bounds.getNorthEast())
-      const sw = proj.fromLatLngToDivPixel(bounds.getSouthWest())
-      const vpW  = Math.abs(ne.x - sw.x)
-      const vpH  = Math.abs(sw.y - ne.y)
+      // ── Compute an axis-aligned bounding box around the actual visible
+      // viewport in pane-pixel space. Using map.getBounds() directly breaks
+      // under tilt + heading rotation: getBounds() returns a NORTH-aligned
+      // lat/lng rectangle that's far smaller than the on-screen trapezoid,
+      // so the canvas ends up covering only a thin strip. Projecting the
+      // four container-pixel corners → lat/lng → divPixel captures the
+      // full rotated/tilted quadrilateral, then we bound it with an AABB.
+      const div = map.getDiv()
+      const cw  = div.clientWidth  || div.offsetWidth  || 1
+      const ch  = div.clientHeight || div.offsetHeight || 1
+      const Point = window.google.maps.Point
+      const screenCorners = [
+        new Point(0,  0),
+        new Point(cw, 0),
+        new Point(cw, ch),
+        new Point(0,  ch),
+      ]
+      const cornerPx = screenCorners.map((pt) => {
+        // noClipping=true so corners beyond the map's normal domain
+        // (common at 45° tilt — top of screen can be far off) still
+        // project meaningfully.
+        const ll = proj.fromContainerPixelToLatLng(pt, true)
+        return proj.fromLatLngToDivPixel(ll)
+      })
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      for (const p of cornerPx) {
+        if (p.x < minX) minX = p.x
+        if (p.y < minY) minY = p.y
+        if (p.x > maxX) maxX = p.x
+        if (p.y > maxY) maxY = p.y
+      }
+      const vpW  = maxX - minX
+      const vpH  = maxY - minY
       const bufX = Math.ceil(vpW * PAN_BUFFER)
       const bufY = Math.ceil(vpH * PAN_BUFFER)
-
-      // Note: a pan-only "fast path" (reposition cached pixels without
-      // re-projecting each crime) was tried and removed — Google Maps'
-      // OverlayView pane can renormalise its pixel origin between
-      // gestures, so deltas don't reliably describe the transform. The
-      // heatmap drifted off its real crime positions, which is strictly
-      // worse than a performance dip. Always fully re-render.
 
       // ── Dynamic geographic radius (at display px), then scaled internally
       const RADIUS = geoRadiusToPx(proj, bounds.getCenter())
 
-      // Canvas covers viewport + buffer on all four sides (display pixels)
-      const left = Math.floor(Math.min(ne.x, sw.x)) - bufX - RADIUS
-      const top  = Math.floor(Math.min(ne.y, sw.y)) - bufY - RADIUS
+      // Canvas covers viewport AABB + buffer on all four sides (display px)
+      const left = Math.floor(minX) - bufX - RADIUS
+      const top  = Math.floor(minY) - bufY - RADIUS
       const dispW = Math.ceil(vpW) + bufX * 2 + RADIUS * 2
       const dispH = Math.ceil(vpH) + bufY * 2 + RADIUS * 2
 

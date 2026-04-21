@@ -197,7 +197,6 @@ export default function App() {
       {/* ── Layer toggles ── */}
       <LayerToggle
         showCrime={layers.showCrime}
-        showTransport={layers.showTransport}
         showRoute={layers.showRoute}
         onChange={handleLayerChange}
       />
