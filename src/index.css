@@ -620,8 +620,18 @@ body {
 }
 
 /* ── Area Card ─────────────────────────────────────────────── */
+/* flex column + min-height lets the disclaimer push to the bottom
+   when the sheet is pulled full-height and the card has leftover
+   room below the last breakdown row. Without this the card's
+   content hugs the top and the bottom half looks blank. */
 .area-card {
   padding: 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.area-card__disclaimer {
+  margin-top: auto;
 }
 .area-card--loading,
 .area-card--error {
@@ -1006,7 +1016,8 @@ body {
   font-size: 10px;
   color: var(--text-muted);
   text-align: center;
-  margin-top: 16px;
+  margin-top: auto;          /* push to bottom inside flex column */
+  padding-top: 20px;         /* keep clear of breakdown bars above */
   line-height: 1.6;
 }
 .area-card__error-msg { font-size: 13px; color: var(--text-muted); text-align: center; }

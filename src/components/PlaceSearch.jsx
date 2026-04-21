@@ -22,6 +22,9 @@ export default function PlaceSearch({
   const placesLib   = useMapsLibrary('places')
   const sessionToken = useRef(null)
   const containerRef = useRef(null)
+  // Skip the fetch that would otherwise fire right after a selection
+  // repopulates the input with the chosen place's display name.
+  const skipNextFetch = useRef(false)
 
   useEffect(() => {
     if (!placesLib) return
@@ -43,6 +46,10 @@ export default function PlaceSearch({
     if (!placesLib || !value.trim()) {
       setSuggestions([])
       setOpen(false)
+      return
+    }
+    if (skipNextFetch.current) {
+      skipNextFetch.current = false
       return
     }
 
@@ -71,6 +78,7 @@ export default function PlaceSearch({
       sessionToken.current = new placesLib.AutocompleteSessionToken()
 
       const name = place.displayName ?? suggestion.placePrediction.text.toString()
+      skipNextFetch.current = true
       setValue(name)
       setSuggestions([])
       setOpen(false)

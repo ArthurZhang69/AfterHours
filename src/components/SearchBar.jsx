@@ -13,6 +13,11 @@ export default function SearchBar({
 
   const placesLib    = useMapsLibrary('places')
   const sessionToken = useRef(null)
+  // Set right before we programmatically fill the input with the
+  // chosen place's name. Without this guard the value-change
+  // triggers a fresh autocomplete fetch that re-opens the dropdown
+  // the moment we just closed it.
+  const skipNextFetch = useRef(false)
 
   useEffect(() => {
     if (!placesLib) return
@@ -23,6 +28,10 @@ export default function SearchBar({
     if (!placesLib || !value.trim()) {
       setSuggestions([])
       setOpen(false)
+      return
+    }
+    if (skipNextFetch.current) {
+      skipNextFetch.current = false
       return
     }
 
@@ -56,6 +65,7 @@ export default function SearchBar({
         location: { lat: place.location.lat(), lng: place.location.lng() },
       }
 
+      skipNextFetch.current = true
       setValue(name)
       setSuggestions([])
       setOpen(false)

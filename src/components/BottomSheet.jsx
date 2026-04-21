@@ -2,10 +2,13 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 
 const SNAP = { COLLAPSED: 0, HALF: 1, FULL: 2 }
 
+// FULL stops short of the top edge so the search bar (which sits
+// at safe-area-inset-top + ~56px) stays fully visible instead of
+// being overlapped by the sheet's rounded top border.
 const SNAP_HEIGHTS = {
   [SNAP.COLLAPSED]: 72,   // px — drag handle + summary line
   [SNAP.HALF]:      0.46, // fraction of screen height
-  [SNAP.FULL]:      0.88,
+  [SNAP.FULL]:      0.80,
 }
 
 /**
