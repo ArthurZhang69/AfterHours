@@ -631,19 +631,25 @@ body {
   gap: 12px;
   padding-top: 4px;
 }
+/* Small caps labels. Outfit at 10px/600 was looking ghost-thin against
+   the dark theme — bumped to 11px/700 and brightened the ink one step
+   from --text-muted → --text-secondary so the section headings read
+   at a glance without becoming loud. */
 .area-card__label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text-secondary);
   margin-bottom: 6px;
+  text-transform: uppercase;
 }
 .area-card__section-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text-secondary);
   margin-bottom: 10px;
+  text-transform: uppercase;
 }
 .area-card__score-row {
   display: flex;
@@ -696,12 +702,26 @@ body {
   font-size: 22px;
   font-weight: 300;
   color: var(--text-primary);
-  line-height: 1;
+  /* Fixed line-height across all three cells so the baseline of
+     "283", "5" and "Feb 2026" lands on the same row → the labels
+     beneath line up cleanly regardless of value length or size. */
+  line-height: 22px;
+  min-height: 22px;
+  display: flex;
+  align-items: baseline;
   letter-spacing: -0.01em;
 }
+/* Used for strings that are too long at the default 22px (e.g. the
+   data-month). Smaller type, but still docked to the shared 22px
+   baseline row so horizontal alignment is preserved. */
+.stat-value--compact {
+  font-size: 15px;
+  font-weight: 400;
+}
 .stat-label {
-  font-size: 10px;
-  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
   letter-spacing: 0.04em;
 }
 

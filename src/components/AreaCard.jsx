@@ -38,6 +38,17 @@ export default function AreaCard({ crimes, center, stations, dataMonth, loading,
     .slice(0, 5)
   const maxCount = breakdown[0]?.[1] ?? 1
 
+  // Abbreviate the data-month string so the third stat cell can share the
+  // same type size as "Incidents" and "Categories" — otherwise the smaller
+  // "February 2026" rendered at fontSize:12 sat at a different baseline
+  // and the row looked broken.
+  const dataMonthShort = (() => {
+    if (!dataMonth) return '—'
+    const [month, year] = dataMonth.split(' ')
+    const abbr = month?.slice(0, 3) ?? month
+    return year ? `${abbr} ${year}` : abbr
+  })()
+
   return (
     <div className="area-card">
       {/* Browse area indicator */}
@@ -76,7 +87,7 @@ export default function AreaCard({ crimes, center, stations, dataMonth, loading,
           <span className="stat-label">Categories</span>
         </div>
         <div className="stat-item">
-          <span className="stat-value" style={{ fontSize: 12 }}>{dataMonth ?? '—'}</span>
+          <span className="stat-value stat-value--compact">{dataMonthShort}</span>
           <span className="stat-label">Data period</span>
         </div>
       </div>
