@@ -18,7 +18,7 @@ const WEIGHTS = {
  * At zoom 14 this is ~18 px; at zoom 17 it is ~140 px (crimes blend properly).
  * Clamped so the canvas never becomes impractically large at extreme zooms.
  */
-const GEO_RADIUS_M = 85    // metres — controls the "spread" of each crime
+const GEO_RADIUS_M = 55    // metres — controls the "spread" of each crime
 const MIN_RADIUS_PX = 6    // never smaller (prevents invisible dots)
 const MAX_RADIUS_PX = 50   // never larger  (prevents huge canvas blowup)
 
