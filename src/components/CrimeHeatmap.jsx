@@ -138,18 +138,6 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
   // Cache the last-used spot so we don't rebuild it on every draw when
   // the radius hasn't changed (common during plain pan/data updates).
   const spotCacheRef = useRef({ radius: -1, canvas: null })
-  // Cache the full pixel composition. When only the viewport pans (same
-  // zoom, same crimes, same category) we can skip the 2-phase render and
-  // just reposition the canvas via CSS left/top — the single biggest win,
-  // since pure-pan is the most common interaction.
-  // Remembers the exact projection state of the last pixel render so a
-  // pan-only "fast path" can re-anchor by applying the pane-pixel delta,
-  // sidestepping every derivation that could drift (radius, buffer, rounding).
-  const renderCacheRef = useRef({
-    zoom: -1, cat: '', len: -1,
-    neX: 0, neY: 0,
-    left: 0, top: 0,
-  })
   const rafRef         = useRef(null)
 
   // ── Create overlay once when the map is available ──────────────────────
@@ -180,7 +168,6 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
       if (!c?.length) return
 
       const zoom = map.getZoom() ?? 14
-      const cache = renderCacheRef.current
 
       const ne = proj.fromLatLngToDivPixel(bounds.getNorthEast())
       const sw = proj.fromLatLngToDivPixel(bounds.getSouthWest())
@@ -189,30 +176,12 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
       const bufX = Math.ceil(vpW * PAN_BUFFER)
       const bufY = Math.ceil(vpH * PAN_BUFFER)
 
-      // ── Fast path: zoom/data/category unchanged → reposition only ────────
-      // The cached pixel content is still geographically correct; all we
-      // need is to shift the element by however much pane-pixel space has
-      // moved since the last real render. Using a delta (not a re-derived
-      // left/top) guarantees we never drift by a buffer- or radius-rounding
-      // mismatch — the content line up with the map to the pixel.
-      if (
-        cache.zoom === zoom &&
-        cache.cat  === cat  &&
-        cache.len  === c.length &&
-        this._canvas.width > 0
-      ) {
-        const dx = ne.x - cache.neX
-        const dy = ne.y - cache.neY
-        const newLeft = cache.left + dx
-        const newTop  = cache.top  + dy
-        this._canvas.style.left    = `${newLeft}px`
-        this._canvas.style.top     = `${newTop}px`
-        this._canvas.style.opacity = String(heatmapOpacity(zoom))
-        // Update anchor so successive pans compose correctly.
-        cache.neX = ne.x; cache.neY = ne.y
-        cache.left = newLeft; cache.top = newTop
-        return
-      }
+      // Note: a pan-only "fast path" (reposition cached pixels without
+      // re-projecting each crime) was tried and removed — Google Maps'
+      // OverlayView pane can renormalise its pixel origin between
+      // gestures, so deltas don't reliably describe the transform. The
+      // heatmap drifted off its real crime positions, which is strictly
+      // worse than a performance dip. Always fully re-render.
 
       const filtered = cat === 'all' ? c : c.filter((x) => x.category === cat)
       if (!filtered.length) return
@@ -288,16 +257,6 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
       }
 
       canvas.getContext('2d').putImageData(out, 0, 0)
-
-      // Record the exact projection state used to bake these pixels.
-      // Future pan-only fast-path re-anchors will be computed as deltas
-      // against this reference, so the result is drift-free regardless of
-      // how radius or buffer were rounded on this draw.
-      renderCacheRef.current = {
-        zoom, cat, len: c.length,
-        neX: ne.x, neY: ne.y,
-        left, top,
-      }
     }
 
     overlay.onRemove = function () {
@@ -360,12 +319,6 @@ export default function CrimeHeatmap({ crimes, category = 'all' }) {
   // ── Update data ref + schedule debounced redraw on data changes ─────────
   useEffect(() => {
     dataRef.current = { crimes, category }
-    // Data changed → invalidate the fast-path cache so the next draw
-    // actually re-renders pixels instead of just repositioning.
-    renderCacheRef.current = {
-      zoom: -1, cat: '', len: -1,
-      neX: 0, neY: 0, left: 0, top: 0,
-    }
     clearTimeout(dataTimerRef.current)
     dataTimerRef.current = setTimeout(() => {
       overlayRef.current?.draw()
