@@ -15,11 +15,16 @@ export default function MapController({ panTo, is3D }) {
     if (map.getZoom() < 13) map.setZoom(15)
   }, [map, panTo])
 
-  // Boost zoom to show 3D buildings (need ≥ 16), restore on exit
+  // Google's vector renderer only extrudes building polygons once
+  // you're at zoom ≥ 17 — below that you just get flat outlines even
+  // at tilt 45°. So when the user hits the 3D toggle, auto-zoom to
+  // at least 17 around the current centre. If they're already closer
+  // (17+), leave their zoom alone so we don't jerk them out of a
+  // street-level view they deliberately set.
   useEffect(() => {
     if (!map) return
-    if (is3D) {
-      if (map.getZoom() < 16) map.setZoom(16)
+    if (is3D && map.getZoom() < 17) {
+      map.setZoom(17)
     }
   }, [map, is3D])
 
