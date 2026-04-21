@@ -152,9 +152,15 @@ export default function Onboarding({ ready = true }) {
 
   // Trigger once the app is interactive (splash gone). Runs every
   // time — Skip is the opt-out, not a persistent localStorage flag.
+  //
+  // Hard fallback at 5 s: if London crime data hasn't loaded (slow
+  // connection, rate limit, data.police.uk outage) `ready` will never
+  // flip, but the user is already looking at a functional map — we
+  // should still run the tour rather than stall forever.
   useEffect(() => {
-    if (!ready) return
-    setVisible(true)
+    if (ready) { setVisible(true); return }
+    const id = setTimeout(() => setVisible(true), 5000)
+    return () => clearTimeout(id)
   }, [ready])
 
   // Re-measure target on step change, resize, and orientation change.
