@@ -220,7 +220,7 @@ body {
   padding: 0;
   line-height: 1;
 }
-.search-bar__browse-btn {
+.search-bar__help-btn {
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -228,17 +228,20 @@ body {
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
   border: 1px solid var(--border-strong);
+  color: var(--text-primary);
   font-size: 18px;
+  font-weight: 600;
+  font-family: var(--font);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
 }
-.search-bar__browse-btn--active {
-  border-color: var(--accent-cyan);
-  background: rgba(0, 229, 198, 0.15);
-}
+.search-bar__help-btn:hover  { filter: brightness(1.15); }
+.search-bar__help-btn:active { transform: scale(0.94); }
 
 /* ── PlaceSearch (reusable) ────────────────────────────────── */
 .place-search { position: relative; }
@@ -1095,30 +1098,6 @@ button, input { -webkit-tap-highlight-color: transparent; }
   color: var(--text-muted);
   letter-spacing: 0.03em;
 }
-
-/* Persistent "?" button — reopens the coach-mark tour anytime.
-   Parked bottom-left, well clear of the compass / 2D-3D control
-   (which sit bottom-left too but further up the stack). */
-.coach-help {
-  position: fixed;
-  left: 16px;
-  bottom: calc(var(--sheet-h, 46vh) + 12px);
-  z-index: 900;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(20, 22, 30, 0.85);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  color: var(--accent-blue);
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 120ms, filter 140ms;
-}
-.coach-help:hover  { filter: brightness(1.15); }
-.coach-help:active { transform: scale(0.94); }
 
 /* ── Coach-mark onboarding ─────────────────────────────────────
    Dims the whole app and cuts a "spotlight" hole around one real

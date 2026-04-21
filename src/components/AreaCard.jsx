@@ -6,7 +6,7 @@ import { CRIME_COLORS, CRIME_LABELS } from '../constants/mapStyles'
  * Area summary card shown in the bottom sheet.
  * Displays risk score, crime breakdown, and nearby stations.
  */
-export default function AreaCard({ crimes, center, stations, dataMonth, loading, error, onRouteMode, browseName }) {
+export default function AreaCard({ crimes, center, stations, dataMonth, loading, error, onRouteMode }) {
   if (loading) {
     return (
       <div className="area-card area-card--loading">
@@ -51,13 +51,6 @@ export default function AreaCard({ crimes, center, stations, dataMonth, loading,
 
   return (
     <div className="area-card">
-      {/* Browse area indicator */}
-      {browseName && (
-        <div className="area-card__browse-chip">
-          Showing data for: {browseName}
-        </div>
-      )}
-
       {/* Header */}
       <div className="area-card__header">
         <div>

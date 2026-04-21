@@ -33,7 +33,6 @@ export default function App() {
   const [toast,        setToast]        = useState(null)
   const [selectedCluster, setSelectedCluster] = useState(null)
   const [destination,  setDestination]  = useState(null)
-  const [browseArea,   setBrowseArea]   = useState(null)   // { name, location }
   const [customOrigin, setCustomOrigin] = useState(null)   // { name, location }
   const [crimeCategory, setCrimeCategory] = useState('all')
   const [splashFading,  setSplashFading]  = useState(false)
@@ -62,8 +61,7 @@ export default function App() {
   } = useLondonCrimes()
 
   // Local crime data — used for area risk score + AreaCard breakdown
-  // Follows browse area when set, otherwise nearest London location
-  const crimeCenter = browseArea?.location ?? londonLocation
+  const crimeCenter = londonLocation
   const { crimes: localCrimes, loading: crimeLoading, error: crimeError, dataMonth } =
     useCrimeData(crimeCenter?.lat, crimeCenter?.lng)
 
@@ -115,14 +113,6 @@ export default function App() {
     setLayers((prev) => ({ ...prev, showRoute: true }))
   }, [])
 
-  const handleBrowse = useCallback(({ location, name }) => {
-    setBrowseArea({ location, name })
-  }, [])
-
-  const handleBrowseReset = useCallback(() => {
-    setBrowseArea(null)
-  }, [])
-
   const enterRouteMode = useCallback(() => {
     setView(VIEW.ROUTE)
     setLayers((prev) => ({ ...prev, showRoute: true }))
@@ -153,7 +143,7 @@ export default function App() {
       <div className="map-wrapper">
         <MapContainer
           center={londonLocation}
-          panTo={browseArea?.location ?? destination}
+          panTo={destination}
           destination={destination}
           crimes={londonCrimes}
           clusters={londonClusters}
@@ -173,9 +163,6 @@ export default function App() {
       {/* ── Search bar ── */}
       <SearchBar
         onSearch={handleSearch}
-        onBrowse={handleBrowse}
-        onBrowseReset={handleBrowseReset}
-        browseArea={browseArea?.name}
         onRouteMode={enterRouteMode}
       />
 
@@ -232,7 +219,6 @@ export default function App() {
               loading={crimeLoading}
               error={crimeError}
               onRouteMode={enterRouteMode}
-              browseName={browseArea?.name}
             />
           </>
         )}

@@ -162,6 +162,15 @@ export default function Onboarding({ ready = true }) {
     return () => clearTimeout(id)
   }, [])
 
+  // Listen for the header "?" button — SearchBar dispatches
+  // `afterhours:tour` instead of calling back through props, so the
+  // tour component stays self-contained.
+  useEffect(() => {
+    const onReplay = () => { setStep(0); setLeaving(false); setVisible(true) }
+    window.addEventListener('afterhours:tour', onReplay)
+    return () => window.removeEventListener('afterhours:tour', onReplay)
+  }, [])
+
   // Re-measure target on step change, resize, and orientation change.
   // Re-uses useLayoutEffect so the tooltip jumps into place in the same
   // paint that the step advances — no visual "flash at 0,0" on mobile.
@@ -203,20 +212,7 @@ export default function Onboarding({ ready = true }) {
     setStep((s) => Math.max(0, s - 1))
   }, [])
 
-  // Always-visible "?" button — reopens the tour on demand and also
-  // serves as an on-device smoke test that this build actually loaded.
-  const helpButton = (
-    <button
-      className="coach-help"
-      onClick={() => { setStep(0); setVisible(true) }}
-      aria-label="Replay tour"
-      title="Replay tour"
-    >
-      ?
-    </button>
-  )
-
-  if (!visible || !geom) return helpButton
+  if (!visible || !geom) return null
 
   const s = STEPS[step]
   const { hole, tooltip } = geom
