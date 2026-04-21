@@ -1095,3 +1095,112 @@ button, input { -webkit-tap-highlight-color: transparent; }
   color: var(--text-muted);
   letter-spacing: 0.03em;
 }
+
+/* ── First-run onboarding ──────────────────────────────────────
+   Fullscreen modal with a single card, shown only on first visit
+   (localStorage flag). Blur + dim behind so the map is still
+   glimpsable as context for each slide's copy. */
+.onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(6, 7, 12, 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  animation: onboarding-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.onboarding--leaving {
+  animation: onboarding-out 280ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+@keyframes onboarding-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes onboarding-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.onboarding__card {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  padding: 34px 28px 24px;
+  background: linear-gradient(180deg, #12141c 0%, #0c0e15 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  animation: onboarding-card-in 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes onboarding-card-in {
+  from { transform: translateY(16px) scale(0.96); opacity: 0; }
+  to   { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+.onboarding__skip {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+.onboarding__skip:hover { color: var(--text-primary); }
+
+.onboarding__icon {
+  font-size: 44px;
+  line-height: 1;
+  margin-bottom: 16px;
+}
+.onboarding__title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 10px;
+  letter-spacing: -0.01em;
+}
+.onboarding__body {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  margin: 0 0 22px;
+}
+.onboarding__dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+.onboarding__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  transition: background 200ms, width 200ms;
+}
+.onboarding__dot--active {
+  background: var(--accent-blue);
+  width: 20px;
+  border-radius: 3px;
+}
+.onboarding__cta {
+  width: 100%;
+  padding: 13px 16px;
+  background: var(--accent-blue);
+  color: #03141b;
+  border: none;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 150ms, transform 80ms;
+}
+.onboarding__cta:hover  { filter: brightness(1.08); }
+.onboarding__cta:active { transform: scale(0.98); }

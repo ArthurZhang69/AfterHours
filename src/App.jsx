@@ -5,7 +5,7 @@ import SearchBar       from './components/SearchBar'
 import BottomSheet     from './components/BottomSheet'
 import AreaCard        from './components/AreaCard'
 import RoutePanel      from './components/RoutePanel'
-import LayerToggle     from './components/LayerToggle'
+import Onboarding      from './components/Onboarding'
 import CategoryFilter  from './components/CategoryFilter'
 import CrimeDetailPanel from './components/CrimeDetailPanel'
 import SplashScreen    from './components/SplashScreen'
@@ -22,6 +22,10 @@ const VIEW = { MAP: 'map', ROUTE: 'route', HOTSPOT: 'hotspot' }
 
 export default function App() {
   const [view,         setView]         = useState(VIEW.MAP)
+  // Crime layer is always on (an empty basemap has no reason to exist in
+  // this app). Transit was retired in the UI. showRoute is toggled
+  // automatically by enter/exitRouteMode when the user starts or clears
+  // a route — no user-visible layer toggle.
   const [layers,       setLayers]       = useState({ showCrime: true, showTransport: false, showRoute: false })
   const [activeRoute,  setActiveRoute]  = useState('A')
   const [routePaths,   setRoutePaths]   = useState({ A: null, B: null })
@@ -96,10 +100,6 @@ export default function App() {
       return () => clearTimeout(id)
     }
   }, [nearbyLocalCrimes, londonLocation])
-
-  const handleLayerChange = useCallback((key, value) => {
-    setLayers((prev) => ({ ...prev, [key]: value }))
-  }, [])
 
   const handleRoutesReady = useCallback(({ routeA, routeB, durationSecA, distanceMa, durationSecB, distanceMb }) => {
     setRoutePaths({ A: routeA, B: routeB })
@@ -194,12 +194,8 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Layer toggles ── */}
-      <LayerToggle
-        showCrime={layers.showCrime}
-        showRoute={layers.showRoute}
-        onChange={handleLayerChange}
-      />
+      {/* ── First-run onboarding overlay ── */}
+      <Onboarding />
 
       {/* ── Bottom sheet ── */}
       <BottomSheet onHeightChange={setSheetHeight}>
