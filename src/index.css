@@ -29,7 +29,10 @@
   --radius-md: 12px;
   --radius-lg: 20px;
 
-  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  /* Outfit is loaded from Google Fonts in index.html. The system-UI
+     fallbacks remain so the first paint (before the web font swaps in)
+     still looks intentional and the app stays readable offline. */
+  --font: 'Outfit', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'SF Mono', 'Fira Code', monospace;
 
   --sheet-bg: rgba(14, 15, 22, 0.97);

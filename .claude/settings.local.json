@@ -44,7 +44,12 @@
       "Bash(python scripts/office/unpack.py \"C:/Users/Arthur/Desktop/AfterHours_Issues.docx\" unpacked_issues/)",
       "Bash(grep -n \"useCallback\\\\|\\\\[\\\\]$\\\\|onPointerMove\\\\|onPointerUp\" \"D:/CASA/AfterHours App/src/components/BottomSheet.jsx\")",
       "Bash(ls \"D:/CASA/AfterHours App/.env\"*)",
-      "Bash(gh auth:*)"
+      "Bash(gh auth:*)",
+      "Bash(python3)",
+      "Bash(unzip -p \"D:/xwechat_files/wxid_8khgkusaq0bg22_fd4f/msg/file/2026-04/AfterHours_文献与公式对应说明.docx\" word/document.xml)",
+      "Bash(py -c ':*)",
+      "Bash(rm -f .tmp_docx.xml .tmp_docx.txt)",
+      "Bash(ls -la .tmp_docx*)"
     ]
   }
 }
