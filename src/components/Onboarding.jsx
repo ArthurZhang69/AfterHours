@@ -45,12 +45,13 @@ const STEPS = [
     body: 'The warm glow is real crime data from data.police.uk. Brighter patches = more incidents recently. The black 99+ badges are clickable hotspot clusters.',
     target: null,
     placement: 'centre',
+    legend: true,
   },
   {
     title: 'Tilt & rotate',
     body: 'Tap to toggle 3D. Drag the map with two fingers to rotate. Useful for recognising landmarks on an unfamiliar street at night.',
     target: '.tilt-btn',
-    placement: 'left',
+    placement: 'auto',
     padding: 8,
   },
   {
@@ -94,12 +95,28 @@ function measure(step, viewportW, viewportH) {
   // Pick a side with space. The tooltip is ~300px × ~140px on mobile.
   const TIP_W = Math.min(300, viewportW - 32)
   const GAP   = 14
+  const spaceBelow = viewportH - r.bottom
+  const spaceAbove = r.top
+  const spaceLeft  = r.left
+  const spaceRight = viewportW - r.right
   let placement = step.placement
   if (placement === 'auto') {
-    const spaceBelow = viewportH - r.bottom
-    const spaceAbove = r.top
-    placement = spaceBelow > spaceAbove ? 'below' : 'above'
+    // Prefer whichever cardinal direction has the most slack.
+    const opts = [
+      ['below', spaceBelow],
+      ['above', spaceAbove],
+      ['right', spaceRight],
+      ['left',  spaceLeft],
+    ]
+    opts.sort((a, b) => b[1] - a[1])
+    placement = opts[0][0]
   }
+  // If the explicit side doesn't have room for the tooltip, flip.
+  // Without this guard a button hugging a screen edge (e.g. the tilt
+  // button at left:16) yields an off-screen tooltip and the tour
+  // looks like it silently dismissed itself.
+  if (placement === 'left'  && spaceLeft  < TIP_W + GAP + 16) placement = spaceRight > spaceLeft ? 'right' : (spaceBelow > spaceAbove ? 'below' : 'above')
+  if (placement === 'right' && spaceRight < TIP_W + GAP + 16) placement = spaceLeft  > spaceRight ? 'left'  : (spaceBelow > spaceAbove ? 'below' : 'above')
 
   let top, left, transform, arrow
   switch (placement) {
@@ -266,6 +283,17 @@ export default function Onboarding({ ready = true }) {
 
         <h3 className="coach__title">{s.title}</h3>
         <p  className="coach__body">{s.body}</p>
+
+        {s.legend && (
+          <div className="coach__legend">
+            <div className="coach__legend-bar" />
+            <div className="coach__legend-labels">
+              <span>Low</span>
+              <span>Medium</span>
+              <span>High</span>
+            </div>
+          </div>
+        )}
 
         <div className="coach__footer">
           <div className="coach__dots">

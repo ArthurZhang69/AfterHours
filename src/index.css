@@ -1174,6 +1174,36 @@ button, input { -webkit-tap-highlight-color: transparent; }
   margin: 0 0 14px;
 }
 
+/* Heat-map colour legend shown on the "Read the heat-map" tour step.
+   Stops mirror the magma ramp in CrimeHeatmap.jsx (rgba(28,16,68)
+   → rgba(82,9,107) → … → rgba(252,253,191)). */
+.coach__legend {
+  margin: 0 0 14px;
+}
+.coach__legend-bar {
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(
+    to right,
+    rgb(28, 16, 68)     0%,
+    rgb(82, 9, 107)    18%,
+    rgb(150, 30, 100)  34%,
+    rgb(208, 61, 89)   50%,
+    rgb(246, 110, 60)  66%,
+    rgb(254, 172, 96)  80%,
+    rgb(254, 220, 154) 92%,
+    rgb(252, 253, 191) 100%
+  );
+}
+.coach__legend-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
 .coach__footer {
   display: flex;
   align-items: center;
