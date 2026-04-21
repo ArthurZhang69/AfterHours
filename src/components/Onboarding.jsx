@@ -1,94 +1,285 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useLayoutEffect } from 'react'
 
 /**
- * First-run welcome tour. Four short slides introducing the map legend,
- * hotspot drill-down, route comparison, and the 3D tilt control.
+ * Coach-mark style first-run tour.
  *
- * Dismissal is persisted in localStorage so the user only sees it once.
- * A `?tour=1` URL param forces it back on for screenshots / demos.
+ * Instead of a modal carousel that just describes features in the
+ * abstract, each step dims the whole screen and cuts a spotlight hole
+ * around a real UI element — the search bar, the 3D button, the sheet
+ * handle — with a small tooltip anchored beside it. The user sees
+ * exactly where to tap next.
+ *
+ * Dismissal is persisted in localStorage (afterhours.onboarded.v1).
+ * Append ?tour=1 to the URL to force-retrigger the flow.
  */
 
 const STORAGE_KEY = 'afterhours.onboarded.v1'
 
-const SLIDES = [
+/**
+ * - target: CSS selector of the element to highlight. null → centred
+ *   narrative step with no spotlight hole (used for the heat-map
+ *   explanation, since the whole map is the target).
+ * - placement: where to anchor the tooltip relative to target rect.
+ *   'auto' picks whichever side has more room.
+ * - padding: extra px around the target rect so the spotlight doesn't
+ *   clip the element's own shadows/outline.
+ */
+const STEPS = [
   {
-    icon: '🔥',
     title: 'Welcome to AfterHours',
-    body: 'A London night-time safety companion. The warm glow on the map is a live crime-density heat-map — brighter patches mean more incidents nearby.',
+    body: 'A night-time safety companion for London. Let\'s walk through the four things you\'ll use the most — takes 20 seconds.',
+    target: null,
+    placement: 'centre',
   },
   {
-    icon: '📍',
-    title: 'Tap a hotspot',
-    body: 'Black badges show crime clusters. Tap one to open a breakdown of the last month of incidents in that block, grouped by type.',
+    title: 'Search a destination',
+    body: 'Type any London address or landmark. We\'ll plot two walking routes side-by-side and score each by the crime density it passes through.',
+    target: '.search-bar__form',
+    placement: 'below',
+    padding: 6,
   },
   {
-    icon: '🛣',
-    title: 'Compare safer routes',
-    body: 'Search a destination or tap "Compare Routes" in the card. You\'ll get two walking paths side-by-side with a risk score for each, so you can pick the calmer one.',
+    title: 'Read the heat-map',
+    body: 'The warm glow is real crime data from data.police.uk. Brighter patches = more incidents recently. The black 99+ badges are clickable hotspot clusters.',
+    target: null,
+    placement: 'centre',
   },
   {
-    icon: '🧭',
-    title: '3D & compass',
-    body: 'Use the 3D button in the corner to tilt the map. Drag to rotate. Handy for recognising landmarks on an unfamiliar street.',
+    title: 'Tilt & rotate',
+    body: 'Tap to toggle 3D. Drag the map with two fingers to rotate. Useful for recognising landmarks on an unfamiliar street at night.',
+    target: '.tilt-btn',
+    placement: 'left',
+    padding: 8,
+  },
+  {
+    title: 'Your area card',
+    body: 'Drag this sheet up to see the risk score, crime breakdown, and nearby transit for wherever you are. The "Compare Routes" button starts the route planner.',
+    target: '.bottom-sheet__handle-area',
+    placement: 'above',
+    padding: 4,
   },
 ]
 
-export default function Onboarding() {
-  const [visible, setVisible]   = useState(false)
-  const [step,    setStep]      = useState(0)
-  const [leaving, setLeaving]   = useState(false)
+/**
+ * Geometry helper: query the target rect and pick a tooltip position
+ * that fits on screen. Returns null if the target can't be found yet
+ * (e.g. the element is rendered conditionally).
+ */
+function measure(step, viewportW, viewportH) {
+  if (!step.target) {
+    return {
+      hole:    null,
+      tooltip: {
+        top:  viewportH / 2,
+        left: viewportW / 2,
+        transform: 'translate(-50%, -50%)',
+        arrow: null,
+      },
+    }
+  }
+  const el = document.querySelector(step.target)
+  if (!el) return null
+  const r = el.getBoundingClientRect()
+  const pad = step.padding ?? 6
 
+  const hole = {
+    top:    r.top    - pad,
+    left:   r.left   - pad,
+    width:  r.width  + pad * 2,
+    height: r.height + pad * 2,
+  }
+
+  // Pick a side with space. The tooltip is ~300px × ~140px on mobile.
+  const TIP_W = Math.min(300, viewportW - 32)
+  const GAP   = 14
+  let placement = step.placement
+  if (placement === 'auto') {
+    const spaceBelow = viewportH - r.bottom
+    const spaceAbove = r.top
+    placement = spaceBelow > spaceAbove ? 'below' : 'above'
+  }
+
+  let top, left, transform, arrow
+  switch (placement) {
+    case 'below': {
+      top  = r.bottom + pad + GAP
+      left = Math.min(Math.max(r.left + r.width / 2, TIP_W / 2 + 16), viewportW - TIP_W / 2 - 16)
+      transform = 'translateX(-50%)'
+      arrow = { side: 'top', offset: (r.left + r.width / 2) - (left - TIP_W / 2) }
+      break
+    }
+    case 'above': {
+      top  = r.top - pad - GAP
+      left = Math.min(Math.max(r.left + r.width / 2, TIP_W / 2 + 16), viewportW - TIP_W / 2 - 16)
+      transform = 'translate(-50%, -100%)'
+      arrow = { side: 'bottom', offset: (r.left + r.width / 2) - (left - TIP_W / 2) }
+      break
+    }
+    case 'left': {
+      top  = r.top + r.height / 2
+      left = r.left - pad - GAP
+      transform = 'translate(-100%, -50%)'
+      arrow = { side: 'right', offset: null }
+      break
+    }
+    case 'right': {
+      top  = r.top + r.height / 2
+      left = r.right + pad + GAP
+      transform = 'translateY(-50%)'
+      arrow = { side: 'left', offset: null }
+      break
+    }
+    default: {
+      top  = viewportH / 2
+      left = viewportW / 2
+      transform = 'translate(-50%, -50%)'
+      arrow = null
+    }
+  }
+  return {
+    hole,
+    tooltip: { top, left, transform, arrow, width: TIP_W },
+  }
+}
+
+export default function Onboarding({ ready = true }) {
+  const [visible, setVisible] = useState(false)
+  const [step,    setStep]    = useState(0)
+  const [leaving, setLeaving] = useState(false)
+  const [geom,    setGeom]    = useState(null)
+
+  // Trigger only once the app is interactive (splash gone).
   useEffect(() => {
-    // Ship quietly — only appear on a genuinely fresh install. A ?tour=1
-    // query param re-triggers the flow so we can recap it during reviews.
+    if (!ready) return
     const forced = new URLSearchParams(window.location.search).get('tour') === '1'
     const seen   = window.localStorage.getItem(STORAGE_KEY) === '1'
     if (forced || !seen) setVisible(true)
-  }, [])
+  }, [ready])
+
+  // Re-measure target on step change, resize, and orientation change.
+  // Re-uses useLayoutEffect so the tooltip jumps into place in the same
+  // paint that the step advances — no visual "flash at 0,0" on mobile.
+  useLayoutEffect(() => {
+    if (!visible) return
+
+    let raf = 0
+    const recompute = () => {
+      const m = measure(STEPS[step], window.innerWidth, window.innerHeight)
+      if (m) setGeom(m)
+      else {
+        // Target not in the DOM yet; retry on the next frame.
+        raf = requestAnimationFrame(recompute)
+      }
+    }
+    recompute()
+
+    const onResize = () => recompute()
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+    }
+  }, [visible, step])
 
   const dismiss = useCallback(() => {
     try { window.localStorage.setItem(STORAGE_KEY, '1') } catch { /* private mode */ }
     setLeaving(true)
-    // Match the CSS exit transition before fully unmounting.
-    setTimeout(() => setVisible(false), 280)
+    setTimeout(() => { setVisible(false); setLeaving(false); setStep(0) }, 240)
   }, [])
 
   const next = useCallback(() => {
-    if (step >= SLIDES.length - 1) dismiss()
+    if (step >= STEPS.length - 1) dismiss()
     else setStep((s) => s + 1)
   }, [step, dismiss])
 
-  if (!visible) return null
+  const prev = useCallback(() => {
+    setStep((s) => Math.max(0, s - 1))
+  }, [])
 
-  const slide  = SLIDES[step]
-  const isLast = step === SLIDES.length - 1
+  if (!visible || !geom) return null
+
+  const s = STEPS[step]
+  const { hole, tooltip } = geom
+  const isLast = step === STEPS.length - 1
 
   return (
-    <div className={`onboarding ${leaving ? 'onboarding--leaving' : ''}`}>
-      <div className="onboarding__card">
+    <div
+      className={`coach ${leaving ? 'coach--leaving' : ''}`}
+      // Tapping the dim area advances — same behaviour as the CTA,
+      // but the tooltip stops propagation so users can still tap its
+      // buttons without dismissing.
+      onClick={next}
+    >
+      {/* Spotlight: a full-screen dark box with a transparent hole.
+          Using box-shadow (not SVG masks) because Safari's mask
+          support for animated positions is flaky under PWA. */}
+      {hole ? (
+        <div
+          className="coach__hole"
+          style={{
+            top:    hole.top,
+            left:   hole.left,
+            width:  hole.width,
+            height: hole.height,
+          }}
+        />
+      ) : (
+        <div className="coach__dim" />
+      )}
+
+      <div
+        className="coach__tip"
+        style={{
+          top:       tooltip.top,
+          left:      tooltip.left,
+          transform: tooltip.transform,
+          width:     tooltip.width,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {tooltip.arrow && (
+          <span
+            className={`coach__arrow coach__arrow--${tooltip.arrow.side}`}
+            style={
+              tooltip.arrow.offset != null
+                ? { left: tooltip.arrow.offset }
+                : undefined
+            }
+          />
+        )}
+
+        <h3 className="coach__title">{s.title}</h3>
+        <p  className="coach__body">{s.body}</p>
+
+        <div className="coach__footer">
+          <div className="coach__dots">
+            {STEPS.map((_, i) => (
+              <span
+                key={i}
+                className={`coach__dot ${i === step ? 'coach__dot--active' : ''}`}
+              />
+            ))}
+          </div>
+          <div className="coach__actions">
+            {step > 0 && (
+              <button className="coach__btn coach__btn--ghost" onClick={prev}>
+                Back
+              </button>
+            )}
+            <button className="coach__btn coach__btn--primary" onClick={next}>
+              {isLast ? 'Got it' : 'Next'}
+            </button>
+          </div>
+        </div>
+
         <button
-          className="onboarding__skip"
+          className="coach__skip"
           onClick={dismiss}
           aria-label="Skip tour"
         >
-          Skip
-        </button>
-
-        <div className="onboarding__icon" aria-hidden="true">{slide.icon}</div>
-        <h2 className="onboarding__title">{slide.title}</h2>
-        <p  className="onboarding__body">{slide.body}</p>
-
-        <div className="onboarding__dots">
-          {SLIDES.map((_, i) => (
-            <span
-              key={i}
-              className={`onboarding__dot ${i === step ? 'onboarding__dot--active' : ''}`}
-            />
-          ))}
-        </div>
-
-        <button className="onboarding__cta" onClick={next}>
-          {isLast ? 'Get started' : 'Next'}
+          Skip tour
         </button>
       </div>
     </div>

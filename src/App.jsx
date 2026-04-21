@@ -195,7 +195,7 @@ export default function App() {
       )}
 
       {/* ── First-run onboarding overlay ── */}
-      <Onboarding />
+      <Onboarding ready={splashGone} />
 
       {/* ── Bottom sheet ── */}
       <BottomSheet onHeightChange={setSheetHeight}>
