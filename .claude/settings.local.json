@@ -49,7 +49,10 @@
       "Bash(unzip -p \"D:/xwechat_files/wxid_8khgkusaq0bg22_fd4f/msg/file/2026-04/AfterHours_文献与公式对应说明.docx\" word/document.xml)",
       "Bash(py -c ':*)",
       "Bash(rm -f .tmp_docx.xml .tmp_docx.txt)",
-      "Bash(ls -la .tmp_docx*)"
+      "Bash(ls -la .tmp_docx*)",
+      "Bash(gh run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"https://arthurzhang69.github.io/AfterHours/\")",
+      "Bash(curl -s \"https://arthurzhang69.github.io/AfterHours/\")"
     ]
   }
 }

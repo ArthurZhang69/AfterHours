@@ -7,6 +7,15 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- Force Safari / iOS PWA to re-fetch index.html on every visit.
+         Without this, Safari cached the HTML for hours at a time, so
+         users kept seeing old UI even after a successful GitHub Pages
+         deploy. Hashed JS/CSS filenames still cache normally — only
+         the entry document is no-store. -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma"        content="no-cache" />
+    <meta http-equiv="Expires"       content="0" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="manifest" href="/manifest.json" />
 
