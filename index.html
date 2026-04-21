@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0A0B0F" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- Force Safari / iOS PWA to re-fetch index.html on every visit.
+         Without this, Safari cached the HTML for hours at a time, so
+         users kept seeing old UI even after a successful GitHub Pages
+         deploy. Hashed JS/CSS filenames still cache normally — only
+         the entry document is no-store. -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma"        content="no-cache" />
+    <meta http-equiv="Expires"       content="0" />
+    <link rel="icon" type="image/svg+xml" href="/AfterHours/icon.svg" />
+    <link rel="manifest" href="/AfterHours/manifest.json" />
+
+    <!-- Outfit (Google Fonts) — primary UI typeface across the app.
+         preconnect shaves ~100ms off the first paint on cold loads by
+         warming up the TLS handshake before the CSS request fires. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"
+    />
+
+    <title>AfterHours</title>
+    <script type="module" crossorigin src="/AfterHours/assets/index-DAqItRw_.js"></script>
+    <link rel="stylesheet" crossorigin href="/AfterHours/assets/index-C3fG2k-e.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
