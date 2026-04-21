@@ -96,13 +96,31 @@ export default function RoutePanel({
   const org  = origin      ?? DEMO_ORIGIN
   const dest = destination ?? DEMO_DESTINATION
 
+  // Google's Routes API sometimes returns only one walking alternative
+  // (short routes, or cases where there's a clearly-best path). When
+  // that happens routePathB comes through as [] and the old code
+  // silently rendered a "Route B" card with 0 risk + the hardcoded
+  // fallback duration/distance — looking like a real recommended
+  // route. Detect the empty-B case and collapse the UI to a single
+  // card with a note instead of faking a second option.
+  const hasRouteA = (routePathA?.length ?? 0) > 0 || !destination  // demo falls through too
+  const hasRouteB = (routePathB?.length ?? 0) > 0 || !destination
+
   // Score each route — Galbrun et al. (2016) formulas 2 (total) & 3 (max).
   // `total` drives the headline score; `max` flags any single high-risk segment.
   const { total: scoreA, max: maxA } = scoreRoute(routePathA ?? DEMO_ROUTE_A, crimes ?? [])
-  const { total: scoreB, max: maxB } = scoreRoute(routePathB ?? DEMO_ROUTE_B, crimes ?? [])
+  const { total: scoreB, max: maxB } = hasRouteB
+    ? scoreRoute(routePathB ?? DEMO_ROUTE_B, crimes ?? [])
+    : { total: 0, max: 0 }
 
-  // Recommended = lower total exposure
-  const recommended = scoreA <= scoreB ? 'A' : 'B'
+  // Recommended = lower total exposure (only when we have both)
+  const recommended = !hasRouteB ? 'A' : (scoreA <= scoreB ? 'A' : 'B')
+
+  // If we selected B and it's now gone, snap back to A so the map
+  // doesn't try to thicken a polyline that doesn't exist.
+  useEffect(() => {
+    if (!hasRouteB && activeRoute === 'B') onRouteSelect?.('A')
+  }, [hasRouteB, activeRoute, onRouteSelect])
 
   // Fetch TfL journey options
   useEffect(() => {
@@ -164,8 +182,16 @@ export default function RoutePanel({
 
       {/* Route cards */}
       <div className="route-panel__cards">
-        <RouteCard id="A" score={scoreA} maxRisk={maxA} meta={metaA} activeRoute={activeRoute} recommended={recommended} onRouteSelect={onRouteSelect} />
-        <RouteCard id="B" score={scoreB} maxRisk={maxB} meta={metaB} activeRoute={activeRoute} recommended={recommended} onRouteSelect={onRouteSelect} />
+        {hasRouteA && (
+          <RouteCard id="A" score={scoreA} maxRisk={maxA} meta={metaA} activeRoute={activeRoute} recommended={recommended} onRouteSelect={onRouteSelect} />
+        )}
+        {hasRouteB ? (
+          <RouteCard id="B" score={scoreB} maxRisk={maxB} meta={metaB} activeRoute={activeRoute} recommended={recommended} onRouteSelect={onRouteSelect} />
+        ) : (
+          <div className="route-panel__single-note">
+            Only one walking route found for this destination — no alternative to compare against.
+          </div>
+        )}
       </div>
 
       {/* TfL public transport options */}
